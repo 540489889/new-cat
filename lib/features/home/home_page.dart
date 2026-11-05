@@ -53,33 +53,78 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).padding.top;
+    final screenH = MediaQuery.of(context).size.height;
+    // 视频固定占顶部约 30%、浮层占底部约 70%，整页正好一屏、无空隙；
+    // 与视频自身比例无关，浮层高度稳定、内容始终可见
+    final videoBandH = screenH * 0.38;
+    // 浮层向上压在视频上的重叠量：让首屏 AI日报 卡直接盖住视频底部，
+    // 形成「内容压在视频上面」的观感
+    const overlap = 36.0;
+
     return Scaffold(
       // 背景色由视频底部底色驱动，使视频无缝融入页面
       backgroundColor: _bgColor,
       body: Stack(
         children: [
-          SingleChildScrollView(
-            controller: _scrollCtrl,
-            // 底部留白：让最后一张卡片不被悬浮胶囊遮挡（胶囊高约 56 + 间距 12 + 安全区）
-            padding: const EdgeInsets.only(bottom: 96),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _HeroVideo(
-                  bgColor: _bgColor,
-                  onColorExtracted: (c) => setState(() => _bgColor = c),
-                ),
-                // 固定叠层：卡片上移 12px 压在视频底部（不裁剪视频，稳定可控）
-                Transform.translate(
-                  offset: const Offset(0, -12),
-                  child: const _AiDailyCard(),
-                ),
-                const _AgentDynamicCard(),
-                const _TimelineCard(),
-              ],
+          // 视频固定在顶部一段（约 30% 屏高），不随下方浮层滚动
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: videoBandH,
+            child: _HeroVideo(
+              height: videoBandH,
+              bgColor: _bgColor,
+              onColorExtracted: (c) => setState(() => _bgColor = c),
             ),
           ),
-          // 固定切换条：不随滚动移动；滚动后渐显背景，避免遮挡视频又保证可读性
+          // 浮层：像 fixed 浮层一样贴在屏幕底部（约 70%），并向上压在视频上面；
+          // 起点上移到「视频下沿上方 overlap」处，使首屏 AI日报 卡直接盖在视频上，
+          // 形成「内容压在视频上面」的层次；内部内容可滚动（页面可滚动的就是这一块）
+          Positioned(
+            top: videoBandH - overlap,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            // 顶部渐隐（弹幕式）：卡片通栏（无左右边距），淡出块整屏宽；
+            // 卡片间用 SizedBox 占位保持间距。默认不渐隐、内容清晰；
+            // 上滑时顶部一段由透明平滑渐隐，内容滑到视频边缘时柔和融入（透出视频）
+            child: ShaderMask(
+              shaderCallback: (rect) {
+                // 弹幕式边缘淡出：渐隐随滚动出现，默认（未滚动）不渐隐、内容清晰；
+                // 上滑时顶部一段由透明柔和渐隐，让内容滑到视频边缘时平滑融入（透出视频）
+                final fadePx = _scrollOffset.clamp(0.0, 72.0);
+                final fade = (fadePx / rect.height).clamp(0.0, 1.0);
+                return LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: fade <= 0
+                      ? [Colors.white, Colors.white]
+                      : [Colors.transparent, Colors.white],
+                  stops: fade <= 0
+                      ? const [0.0, 1.0]
+                      : [0.0, fade],
+                ).createShader(rect);
+              },
+              child: SingleChildScrollView(
+                controller: _scrollCtrl,
+                // 顶部仅留少量呼吸间距，让首张卡片压在视频上的感觉更明显；
+                // 底部留白避开悬浮胶囊
+                padding: const EdgeInsets.only(top: 8, bottom: 96),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    _AiDailyCard(),
+                    SizedBox(height: 12),
+                    _AgentDynamicCard(),
+                    SizedBox(height: 12),
+                    _TimelineCard(),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // 固定切换条：叠在视频之上，不随滚动移动
           Positioned(
             top: 0,
             left: 0,
@@ -108,7 +153,11 @@ class _HeroVideo extends StatefulWidget {
   /// 从视频帧提取到的底色回调，供外层设置页面背景。
   final void Function(Color)? onColorExtracted;
 
-  const _HeroVideo({this.bgColor, this.onColorExtracted});
+  /// 固定的视频展示高度（覆盖按宽高比算出的真实高度）。
+  /// 用于「视频头 + 底部浮层」布局：视频只占顶部一段，不随视频真实比例变化。
+  final double? height;
+
+  const _HeroVideo({this.bgColor, this.onColorExtracted, this.height});
 
   @override
   State<_HeroVideo> createState() => _HeroVideoState();
@@ -323,7 +372,9 @@ class _HeroVideoState extends State<_HeroVideo> with WidgetsBindingObserver {
     // 未取到视频比例时回落 16:9，避免封面态出现 0 高度。
     final screenW = MediaQuery.of(context).size.width;
     final aspect = _videoAspect ?? 16 / 9;
-    final heroHeight = topInset + screenW / aspect;
+    // 若外层给定固定高度（如「视频头 + 底部浮层」布局），则按该高度展示（cover 裁切）；
+    // 否则按真实宽高比完整展示。
+    final heroHeight = widget.height ?? (topInset + screenW / aspect);
 
     return GestureDetector(
       // 左右滑动切换宠物：左滑→下一个，右滑→上一个（循环）
@@ -402,27 +453,6 @@ class _HeroVideoState extends State<_HeroVideo> with WidgetsBindingObserver {
                 ),
               ),
             ),
-            // 底部融入：透明渐变到页面背景色，使视频边缘无缝融入页面
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              height: 90,
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        widget.bgColor ?? Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
           ],
         ),
       ),
@@ -463,7 +493,6 @@ class _PetSwitchBar extends StatelessWidget {
         bottom: 10,
       ),
       decoration: BoxDecoration(
-        color: bgColor.withValues(alpha: 0.96 * t),
         border: t > 0
             ? Border(
                 bottom: BorderSide(
@@ -538,7 +567,7 @@ class _AiDailyCard extends StatelessWidget {
 
     return Container(
       // 底部 margin 4：叠加 Transform 上移的 20px，与下个板块视觉间距约 24
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+      margin: const EdgeInsets.fromLTRB(0, 0, 0, 0),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -733,7 +762,7 @@ class _AgentDynamicCard extends StatelessWidget {
     ];
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      margin: const EdgeInsets.fromLTRB(0, 0, 0, 0),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -973,7 +1002,7 @@ class _TimelineCard extends StatelessWidget {
     ];
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+      margin: const EdgeInsets.fromLTRB(0, 0, 0, 0),
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
       decoration: BoxDecoration(
         color: Colors.white,

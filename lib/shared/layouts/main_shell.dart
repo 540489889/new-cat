@@ -1,7 +1,7 @@
 import 'package:tdesign_flutter/tdesign_flutter.dart';
 
+import '../../features/health/health_page.dart';
 import '../../features/home/home_page.dart';
-import '../../features/log/log_page.dart';
 import '../../features/pet/pet_page.dart';
 import '../../features/settings/settings_page.dart';
 import '../widgets/status_bar_style.dart';
@@ -20,7 +20,7 @@ class _MainShellState extends State<MainShell> {
   static const List<Widget> _pages = <Widget>[
     HomePage(),
     PetPage(),
-    LogPage(),
+    HealthPage(),
     SettingsPage(),
   ];
 

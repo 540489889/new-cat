@@ -98,8 +98,22 @@ class ApiClient {
     return http.Response.fromStream(streamed);
   }
 
+  /// 并发刷新去重：同一时刻只跑一次刷新，其余 401 复用其结果，
+  /// 避免多个请求各自刷新导致 refresh token 被轮换而互相失败、误踢登录。
+  Future<bool>? _refreshFuture;
+
   /// 刷新 Token，成功回写本地；返回是否刷新成功。
+  /// 并发的 401 会复用同一次刷新（防止多请求各自刷新轮换 refresh token 而互相失败）。
   Future<bool> _tryRefresh() async {
+    _refreshFuture ??= _doRefresh();
+    try {
+      return await _refreshFuture!;
+    } finally {
+      _refreshFuture = null;
+    }
+  }
+
+  Future<bool> _doRefresh() async {
     final refresh = await AuthService.getRefreshToken();
     if (refresh == null || refresh.isEmpty) return false;
     final result = await AuthService.refreshToken(refresh);

@@ -14,7 +14,7 @@ class PetPage extends StatelessWidget {
   static const Color _ink = Color(0xFF3D2E33); // 主文字
   static const Color _sub = Color(0xFFA89EA2); // 次要文字
   static const Color _pinkText = Color(0xFFB08CA0); // 链接/标签粉
-  static const Color _iconPinkBg = Color(0xFFF4E3E6); // 功能卡图标底
+  static const Color _iconBg = Color(0xFFF7F5F0); // 功能卡图标底（浅暖白）
   static const Color _tagBg = Color(0xFFF6ECEF); // 标签底
 
   @override
@@ -113,11 +113,13 @@ class _PetProfileCardState extends State<_PetProfileCard> {
 
   PageController? _pageCtrl;
   int _petCount = 0; // 记录已绑定控制器的宠物数量，变化时重建
+  PetState? _pet; // 缓存 PetState 引用，供 dispose 安全移除监听（避免卸载时查祖先）
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final pet = context.read<PetState>();
+    _pet = pet; // 缓存引用，dispose 时用它安全移除监听
     // 宠物数量变化（首帧为空 -> 加载完成）时重建控制器，
     // 否则会沿用首次创建时的旧 viewportFraction（热重载后看不到效果）
     if (_pageCtrl == null || _petCount != pet.pets.length) {
@@ -156,7 +158,7 @@ class _PetProfileCardState extends State<_PetProfileCard> {
 
   @override
   void dispose() {
-    context.read<PetState>().removeListener(_syncPage);
+    _pet?.removeListener(_syncPage);
     _pageCtrl?.dispose();
     super.dispose();
   }
@@ -182,8 +184,8 @@ class _PetProfileCardState extends State<_PetProfileCard> {
 
     // 大头像（当前宠物带粉色描边圆，侧边探出的不带）
     Widget bigAvatar(String h, {bool ringed = true}) => Container(
-          width: 104,
-          height: 104,
+          width: 80,
+          height: 80,
           padding: EdgeInsets.all(ringed ? 5 : 0),
           decoration: ringed
               ? BoxDecoration(
@@ -200,7 +202,7 @@ class _PetProfileCardState extends State<_PetProfileCard> {
         : GestureDetector(
             onTap: () => _tapNext(petState),
             child: SizedBox(
-              height: 112,
+              height: 96,
               child: PageView.builder(
                 controller: _pageCtrl,
                 itemCount: pets.length,
@@ -349,13 +351,13 @@ class _FeatureGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const items = [
-      (Icons.photo_camera, '精彩瞬间', '瞬间照片捕捉'),
-      (Icons.image, '真实回忆', '细节成长记录'),
-      (Icons.access_time_filled, '时间胶囊', '成长关键节点'),
-      (Icons.menu_book, '冒险日记', 'AI宠物故事'),
+      ('assets/images/icon/m-a1.png', '精彩瞬间', '瞬间照片捕捉'),
+      ('assets/images/icon/m-a2.png', '真实回忆', '细节成长记录'),
+      ('assets/images/icon/m-a3.png', '时间胶囊', '成长关键节点'),
+      ('assets/images/icon/m-a4.png', '冒险日记', 'AI宠物故事'),
     ];
     // 手动 2×2 布局：避免 GridView 嵌在滚动容器里 shrinkWrap 测高不准、撑出空隙
-    Widget tile((IconData, String, String) it) => Container(
+    Widget tile((String, String, String) it) => Container(
           height: 76,
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -385,11 +387,11 @@ class _FeatureGrid extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: PetPage._iconPinkBg,
+                  color: PetPage._iconBg,
                   borderRadius: BorderRadius.circular(13),
                 ),
                 alignment: Alignment.center,
-                child: Icon(it.$1, size: 22, color: const Color(0xFF9E6F84)),
+                child: Image.asset(it.$1, width: 26, height: 26),
               ),
             ],
           ),
