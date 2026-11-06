@@ -54,19 +54,15 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).padding.top;
     final screenH = MediaQuery.of(context).size.height;
-    // 视频固定占顶部约 30%、浮层占底部约 70%，整页正好一屏、无空隙；
-    // 与视频自身比例无关，浮层高度稳定、内容始终可见
+    // 视频固定占顶部约 38%，下方为可滚动内容区（与健康页一致：顶部固定、内容滚动）
     final videoBandH = screenH * 0.38;
-    // 浮层向上压在视频上的重叠量：让首屏 AI日报 卡直接盖住视频底部，
-    // 形成「内容压在视频上面」的观感
-    const overlap = 36.0;
 
     return Scaffold(
       // 背景色由视频底部底色驱动，使视频无缝融入页面
       backgroundColor: _bgColor,
       body: Stack(
         children: [
-          // 视频固定在顶部一段（约 30% 屏高），不随下方浮层滚动
+          // 视频固定在顶部一段（约 38% 屏高），不随下方内容滚动
           Positioned(
             top: 0,
             left: 0,
@@ -78,49 +74,48 @@ class _HomePageState extends State<HomePage> {
               onColorExtracted: (c) => setState(() => _bgColor = c),
             ),
           ),
-          // 浮层：像 fixed 浮层一样贴在屏幕底部（约 70%），并向上压在视频上面；
-          // 起点上移到「视频下沿上方 overlap」处，使首屏 AI日报 卡直接盖在视频上，
-          // 形成「内容压在视频上面」的层次；内部内容可滚动（页面可滚动的就是这一块）
+          // 视频底部渐隐：用一层从透明到页面底色的渐变覆盖视频下沿，
+          // 让视频柔和融进背景，消弭与下方内容区的硬边交界
           Positioned(
-            top: videoBandH - overlap,
+            top: videoBandH - 44,
+            left: 0,
+            right: 0,
+            height: 44,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      _bgColor ?? const Color(0xFFEFE9E6),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // 内容区：紧贴视频底部、随页面一起纯滚动（去掉原先的顶部渐隐遮罩与
+          // 重叠压视频效果），滚动手感与健康页一致；顶部视频/PetSwitchBar 保持固定
+          Positioned(
+            top: videoBandH,
             left: 0,
             right: 0,
             bottom: 0,
-            // 顶部渐隐（弹幕式）：卡片通栏（无左右边距），淡出块整屏宽；
-            // 卡片间用 SizedBox 占位保持间距。默认不渐隐、内容清晰；
-            // 上滑时顶部一段由透明平滑渐隐，内容滑到视频边缘时柔和融入（透出视频）
-            child: ShaderMask(
-              shaderCallback: (rect) {
-                // 弹幕式边缘淡出：渐隐随滚动出现，默认（未滚动）不渐隐、内容清晰；
-                // 上滑时顶部一段由透明柔和渐隐，让内容滑到视频边缘时平滑融入（透出视频）
-                final fadePx = _scrollOffset.clamp(0.0, 72.0);
-                final fade = (fadePx / rect.height).clamp(0.0, 1.0);
-                return LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: fade <= 0
-                      ? [Colors.white, Colors.white]
-                      : [Colors.transparent, Colors.white],
-                  stops: fade <= 0
-                      ? const [0.0, 1.0]
-                      : [0.0, fade],
-                ).createShader(rect);
-              },
-              child: SingleChildScrollView(
-                controller: _scrollCtrl,
-                // 顶部仅留少量呼吸间距，让首张卡片压在视频上的感觉更明显；
-                // 底部留白避开悬浮胶囊
-                padding: const EdgeInsets.only(top: 8, bottom: 96),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    _AiDailyCard(),
-                    SizedBox(height: 12),
-                    _AgentDynamicCard(),
-                    SizedBox(height: 12),
-                    _TimelineCard(),
-                  ],
-                ),
+            child: SingleChildScrollView(
+              controller: _scrollCtrl,
+              // 顶部留呼吸间距，左右留 12 与安全区对齐（与健康页一致），底部留白避开悬浮胶囊
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  _AiDailyCard(),
+                  SizedBox(height: 12),
+                  _AgentDynamicCard(),
+                  SizedBox(height: 12),
+                  _TimelineCard(),
+                ],
               ),
             ),
           ),
@@ -516,7 +511,7 @@ class _PetSwitchBar extends StatelessWidget {
                     name,
                     style: TextStyle(
                       color: Colors.black,
-                      fontSize: token.fontTitleLarge?.size ?? 18,
+                      fontSize: 15,
                       fontWeight: FontWeight.w700,
                     ),
                     overflow: TextOverflow.ellipsis,
@@ -537,7 +532,7 @@ class _PetSwitchBar extends StatelessWidget {
             '铲屎官，早上好呀~',
             style: TextStyle(
               color: Colors.black87,
-              fontSize: token.fontBodyMedium?.size ?? 14,
+              fontSize: 13,
             ),
           ),
         ],
@@ -598,7 +593,7 @@ class _AiDailyCard extends StatelessWidget {
               children: [
                 const Text('AI日报',
                     style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: FontWeight.w700,
                         color: Colors.white)),
                 const Spacer(),
@@ -635,7 +630,7 @@ class _AiDailyCard extends StatelessWidget {
                           Text(
                             title,
                             style: TextStyle(
-                              fontSize: 15,
+                              fontSize: 14,
                               fontWeight: FontWeight.w600,
                               color: _titleColor,
                               height: 1.4,
@@ -781,7 +776,7 @@ class _AgentDynamicCard extends StatelessWidget {
           // 板块标题（在白色卡片内）
           const Text('Agent 动态',
               style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 15,
                   fontWeight: FontWeight.w700,
                   color: _titleColor)),
           const SizedBox(height: 10),
@@ -847,7 +842,7 @@ class _AgentBlock extends StatelessWidget {
                       child: Text(data.title,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                              fontSize: 17,
+                              fontSize: 15,
                               fontWeight: FontWeight.w700,
                               color: _ink)),
                     ),
@@ -878,7 +873,7 @@ class _AgentBlock extends StatelessWidget {
           // 正文（字号与 AI 日报标题一致：15 / w600）
           Text(data.body,
               style: const TextStyle(
-                  fontSize: 15,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: _ink,
                   height: 1.4)),
@@ -893,7 +888,7 @@ class _AgentBlock extends StatelessWidget {
             ),
             child: Text(data.suggestion,
                 style: const TextStyle(
-                    fontSize: 14, color: _suggestionText, height: 1.6)),
+                    fontSize: 13, color: _suggestionText, height: 1.6)),
           ),
           if (data.footnote != null) ...[
             const SizedBox(height: 10),
@@ -929,7 +924,7 @@ class _AgentBlock extends StatelessWidget {
         ),
         child: Text(data.primary!,
             style: const TextStyle(
-                fontSize: 15,
+                fontSize: 14,
                 color: Colors.white,
                 fontWeight: FontWeight.w600)),
       ),
@@ -955,7 +950,7 @@ class _AgentBlock extends StatelessWidget {
             SizedBox(width: 6),
             Text('问问AI',
                 style: TextStyle(
-                    fontSize: 15,
+                    fontSize: 14,
                     color: Color(0xFF3A3A3A),
                     fontWeight: FontWeight.w500)),
           ],
@@ -1021,7 +1016,7 @@ class _TimelineCard extends StatelessWidget {
           // 板块标题（在白色卡片内）
           const Text('时间轴动态',
               style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 15,
                   fontWeight: FontWeight.w700,
                   color: _titleColor)),
           const SizedBox(height: 6),
@@ -1102,7 +1097,7 @@ class _TimelineItem extends StatelessWidget {
                 children: [
                   Text(data.title,
                       style: const TextStyle(
-                          fontSize: 14,
+                          fontSize: 13,
                           fontWeight: FontWeight.w700,
                           color: _titleColor)),
                   const SizedBox(height: 3),

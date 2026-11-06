@@ -151,7 +151,7 @@ class AuthService extends ChangeNotifier {
       return LoginResult.fail('Refresh Token 为空');
     }
     try {
-      final uri = Uri.parse('${ApiConfig.baseUrl}/auth/app/token/refresh');
+      final uri = Uri.parse('${ApiConfig.baseUrl}/app/token/refresh');
       final response = await http
           .post(
             uri,

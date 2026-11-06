@@ -70,15 +70,28 @@ class _MainShellState extends State<MainShell> {
           child: Padding(
             // 让胶囊整体离底部留间距，呈现悬浮感
             padding: const EdgeInsets.only(bottom: 12),
-            child: TTabBar(
-              type: TTabBarType.iconText,
-              // 悬浮胶囊样式：圆角胶囊 + 外边距 + 阴影，浮于内容之上
-              style: TTabBarStyle.capsule,
-              // 关闭内置安全区底色条，避免胶囊外再套一层整宽背景
-              useSafeArea: false,
-              value: _currentIndex,
-              navigationTabs: _tabs,
-              onChanged: (index) => setState(() => _currentIndex = index),
+            child: Theme(
+              data: Theme.of(context).copyWith(
+                extensions: [
+                  ...Theme.of(context).extensions.values,
+                  // 胶囊背景加一点透明度（约 85%），透出底部内容
+                  const TTabBarThemeData(
+                    backgroundColor: Color(0xD9FFFFFF),
+                    // 选中项背景改为中性浅灰（替代默认品牌浅紫）
+                    selectedBgColor: Color(0xFFECECEC),
+                  ),
+                ],
+              ),
+              child: TTabBar(
+                type: TTabBarType.iconText,
+                // 悬浮胶囊样式：圆角胶囊 + 外边距 + 阴影，浮于内容之上
+                style: TTabBarStyle.capsule,
+                // 关闭内置安全区底色条，避免胶囊外再套一层整宽背景
+                useSafeArea: false,
+                value: _currentIndex,
+                navigationTabs: _tabs,
+                onChanged: (index) => setState(() => _currentIndex = index),
+              ),
             ),
           ),
         ),

@@ -623,6 +623,7 @@ class _TodayCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Widget divider() => Container(height: 1, color: const Color(0xFFF1EAE4));
     return _Card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -630,27 +631,31 @@ class _TodayCard extends StatelessWidget {
           const _CardHeader(title: '今日状态', action: '历史数据'),
           const SizedBox(height: 12),
           const _TodayRow(
-            icon: Icons.water_drop,
+            icon: 'assets/images/icon/m-c1.png',
             title: '饮水',
-            note: '今日饮水摄入',
+            note: '来自饮水器 A',
             tag: _Tag('正常', bg: HealthPage._goodBg, ink: HealthPage._goodInk),
-            value: '饮水量 180ml · 次数 6',
+            stats: [('饮水量', '180ml'), ('次数', '6')],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
+          divider(),
+          const SizedBox(height: 12),
           const _TodayRow(
-            icon: Icons.restaurant,
+            icon: 'assets/images/icon/m-c2.png',
             title: '进食',
-            note: '今日进食摄入',
+            note: '粮仓 A 为主',
             tag: _Tag('偏少', bg: HealthPage._warnBg, ink: HealthPage._warnInk),
-            value: '进食量 180g · 次数 3',
+            stats: [('饮水量', '180g'), ('次数', '3')],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
+          divider(),
+          const SizedBox(height: 12),
           const _TodayRow(
-            icon: Icons.pets,
+            icon: 'assets/images/icon/m-c3.png',
             title: '运动',
-            note: '今日运动量',
-            tag: _Tag('正常', bg: HealthPage._goodBg, ink: HealthPage._goodInk),
-            value: '最近一次 1.5h',
+            note: '来自摄像头 A',
+            tag: _Tag('稳定', bg: HealthPage._goodBg, ink: HealthPage._goodInk),
+            stats: [('最近一次', '1.5h')],
           ),
         ],
       ),
@@ -658,19 +663,19 @@ class _TodayCard extends StatelessWidget {
   }
 }
 
-/// 今日状态单行：圆底图标 + 名称/状态标签 + 数值行。
+/// 今日状态单行：圆角方底图标（m-c 系列）+ 名称/来源 + 状态标签 + 标签/数值行。
 class _TodayRow extends StatelessWidget {
-  final IconData icon;
+  final String icon; // 图标资源路径
   final String title;
   final String note;
   final _Tag tag;
-  final String value;
+  final List<(String, String)> stats; // (灰色标签, 深色数值)
   const _TodayRow({
     required this.icon,
     required this.title,
     required this.note,
     required this.tag,
-    required this.value,
+    required this.stats,
   });
 
   @override
@@ -678,17 +683,18 @@ class _TodayRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
+        // 圆角方底图标（同宠物页功能图标样式）
         Container(
-          width: 38,
-          height: 38,
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            color: HealthPage._iconBg,
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF7F5F0),
+            borderRadius: BorderRadius.circular(13),
           ),
           alignment: Alignment.center,
-          child: Icon(icon, size: 20, color: HealthPage._iconInk),
+          child: Image.asset(icon, width: 24, height: 24),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -708,10 +714,31 @@ class _TodayRow extends StatelessWidget {
                   tag,
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(value,
-                  style: const TextStyle(
-                      fontSize: 12, color: HealthPage._body)),
+              const SizedBox(height: 6),
+              // 数值行：灰色标签 + 深色数值，项间细分隔线
+              Row(
+                children: [
+                  for (var i = 0; i < stats.length; i++) ...[
+                    if (i > 0) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                          width: 1,
+                          height: 10,
+                          color: const Color(0xFFE8E0DA)),
+                      const SizedBox(width: 8),
+                    ],
+                    Text(stats[i].$1,
+                        style: const TextStyle(
+                            fontSize: 12, color: HealthPage._sub)),
+                    const SizedBox(width: 4),
+                    Text(stats[i].$2,
+                        style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: HealthPage._ink)),
+                  ],
+                ],
+              ),
             ],
           ),
         ),

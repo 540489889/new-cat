@@ -20,15 +20,16 @@ class PetPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).padding.top;
-    // 底部让出：悬浮胶囊 TabBar（约56 + 间距12）+ 安全区
-    final bottomBarHeight = MediaQuery.of(context).padding.bottom + 80;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    // extendBody 下 padding.bottom 已含底部胶囊 TabBar 高度，再留少量间距（与健康页一致）
+    final bottomPad = bottomInset + 76.0;
     return Scaffold(
       backgroundColor: _bg,
       body: Stack(
         children: [
           SingleChildScrollView(
             // 顶部留白 = 固定标题栏高度，避免首张卡片被标题遮挡
-            padding: EdgeInsets.only(top: topInset + 56, bottom: bottomBarHeight + 16),
+            padding: EdgeInsets.only(top: topInset + 56, bottom: bottomPad),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -267,7 +268,7 @@ class _PetProfileCardState extends State<_PetProfileCard> {
                         child: Text(name,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                                fontSize: 17,
+                                fontSize: 15,
                                 fontWeight: FontWeight.w700,
                                 color: PetPage._ink)),
                       ),
@@ -429,7 +430,7 @@ class _CardHeader extends StatelessWidget {
       children: [
         Text(title,
             style: const TextStyle(
-                fontSize: 16,
+                fontSize: 15,
                 fontWeight: FontWeight.w700,
                 color: PetPage._ink)),
         if (count != null) ...[
