@@ -148,29 +148,72 @@ class AuthService extends ChangeNotifier {
   /// 用 Refresh Token 刷新 Access Token。
   static Future<LoginResult> refreshToken(String? refreshToken) async {
     if (refreshToken == null || refreshToken.isEmpty) {
+      debugPrint('[AuthService] refreshToken 跳过：Refresh Token 为空');
       return LoginResult.fail('Refresh Token 为空');
     }
+    final uri = Uri.parse('${ApiConfig.baseUrl}/app/token/refresh');
+    // 脱敏打印 refresh token，既能确认「有没有发出去」，又不泄露完整令牌
+    final mask = refreshToken.length > 8
+        ? '${refreshToken.substring(0, 4)}…${refreshToken.substring(refreshToken.length - 4)}'
+        : '***';
+    debugPrint(
+      '[AuthService] refreshToken 请求 url=$uri Authorization=Bearer $mask',
+    );
+    http.Response? response;
     try {
-      final uri = Uri.parse('${ApiConfig.baseUrl}/app/token/refresh');
-      final response = await http
+      response = await http
           .post(
             uri,
             headers: {'Authorization': 'Bearer $refreshToken'},
           )
           .timeout(const Duration(seconds: ApiConfig.connectTimeout));
       final body = jsonDecode(response.body) as Map<String, dynamic>;
-      if (response.statusCode == 200 && _isSuccess(body['code'])) {
-        final data = body['data'] as Map<String, dynamic>?;
-        if (data != null) {
+      // 接口文档显示该接口响应 schema 为 {warn, success, error, msg, ...}，
+      // 与登录接口的 {code:200} 包装不同，故兼容两种成功判定：
+      // code==200 或 success==true，任一命中即视为刷新成功。
+      final successOk = response.statusCode == 200 &&
+          (_isSuccess(body['code']) || body['success'] == true);
+      if (successOk) {
+        // 新令牌可能在 data 里（常规包装），也可能直接在响应顶层
+        final dynamic payload = body['data'] ?? body;
+        final tokenMap = payload is Map<String, dynamic>
+            ? payload
+            : const <String, dynamic>{};
+        final at =
+            (tokenMap['access_token'] ?? tokenMap['accessToken']) as String? ?? '';
+        final rt =
+            (tokenMap['refresh_token'] ?? tokenMap['refreshToken']) as String? ?? '';
+        if (at.isNotEmpty) {
+          final expiresIn =
+              _toInt(tokenMap['expires_in'] ?? tokenMap['expiresIn']) ?? 1800;
+          debugPrint(
+            '[AuthService] refreshToken 成功 status=${response.statusCode} '
+            'at.len=${at.length} rt.len=${rt.length} expiresIn=$expiresIn',
+          );
           return LoginResult.ok(
-            accessToken: data['access_token'] as String? ?? '',
-            refreshToken: data['refresh_token'] as String? ?? '',
-            expiresIn: _toInt(data['expires_in']) ?? 1800,
+            accessToken: at,
+            refreshToken: rt,
+            expiresIn: expiresIn,
           );
         }
+        // data/顶层都没有 access_token：视为刷新失败，打印诊断
+        debugPrint(
+          '[AuthService] refreshToken 字段缺失 url=$uri status=${response.statusCode} '
+          'body=${response.body}',
+        );
       }
-      return LoginResult.fail(body['msg'] ?? '刷新失败');
+      debugPrint(
+        '[AuthService] refreshToken 失败 url=$uri status=${response.statusCode} '
+        'body=${response.body}',
+      );
+      return LoginResult.fail(body['msg']?.toString() ?? '刷新失败');
     } catch (e) {
+      // 非 JSON 返回（如 404 HTML、代理错误）会在这里被 jsonDecode 抛异常，
+      // 必须把状态码与原始 body 打出来，否则无法判断路径/服务是否正常
+      debugPrint(
+        '[AuthService] refreshToken 异常 url=$uri '
+        'status=${response?.statusCode} body=${response?.body} error=$e',
+      );
       return LoginResult.fail('网络异常：$e');
     }
   }

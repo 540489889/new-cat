@@ -66,7 +66,12 @@ class ApiClient {
           parsed.code == 401 ||
           parsed.code == 403;
       if (isTokenInvalid) {
+        print(
+          '[ApiClient] 检测到令牌失效 status=${response.statusCode} '
+          'code=${parsed.code} msg=${parsed.message} → 尝试刷新',
+        );
         final refreshed = await _tryRefresh();
+        print('[ApiClient] 刷新结果 refreshed=$refreshed');
         if (refreshed) {
           final newToken = await AuthService.getAccessToken();
           if (newToken != null && newToken.isNotEmpty) {

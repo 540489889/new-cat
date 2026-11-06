@@ -54,15 +54,17 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).padding.top;
     final screenH = MediaQuery.of(context).size.height;
-    // 视频固定占顶部约 38%，下方为可滚动内容区（与健康页一致：顶部固定、内容滚动）
-    final videoBandH = screenH * 0.38;
+    // 视频占顶部约 38% 屏高，作为「随滚动离场的 Hero 头」；
+    // 与下方内容同属一条滚动流，一起上移，消除「钉死视频 + 独立列表」的割裂感
+    final videoBandH = screenH * 0.4;
 
     return Scaffold(
       // 背景色由视频底部底色驱动，使视频无缝融入页面
       backgroundColor: _bgColor,
       body: Stack(
         children: [
-          // 视频固定在顶部一段（约 38% 屏高），不随下方内容滚动
+          // 视频固定为顶部一段（约 38% 屏高）的沉浸头，不铺满全屏，
+          // 避免被下方卡片大面积遮挡；始终渲染、不随滚动离场。
           Positioned(
             top: 0,
             left: 0,
@@ -74,52 +76,40 @@ class _HomePageState extends State<HomePage> {
               onColorExtracted: (c) => setState(() => _bgColor = c),
             ),
           ),
-          // 视频底部渐隐：用一层从透明到页面底色的渐变覆盖视频下沿，
-          // 让视频柔和融进背景，消弭与下方内容区的硬边交界
-          Positioned(
-            top: videoBandH - 44,
-            left: 0,
-            right: 0,
-            height: 44,
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      _bgColor ?? const Color(0xFFEFE9E6),
-                    ],
+          // 内容层：在视频之上滚动；首张卡片默认上压视频底部 20px（重叠而非留缝），
+          // 让视频与内容在视觉上连成一片、更好融入。
+          Positioned.fill(
+            child: CustomScrollView(
+              controller: _scrollCtrl,
+              slivers: [
+                // 顶部透明区：高度为 视频高 - 20，使首张卡片叠到视频底部 20px
+                SliverToBoxAdapter(
+                  child: Container(height: videoBandH - 20),
+                ),
+                // 内容：仅卡片本身（各自白底 + 阴影），无整块面板背景，
+                // 卡片直接浮在视频之上，让视频完整透出、更好地融入
+                SliverToBoxAdapter(
+                  child: Container(
+                    // 左右留 12；顶部留白 0（配合上面 -20，首张卡片正好压在视频底部）；底部留白避开悬浮胶囊
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 96),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _AiDailyCard(),
+                        SizedBox(height: 12),
+                        _AgentDynamicCard(),
+                        SizedBox(height: 12),
+                        _TimelineCard(),
+                      ],
+                    ),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
-          // 内容区：紧贴视频底部、随页面一起纯滚动（去掉原先的顶部渐隐遮罩与
-          // 重叠压视频效果），滚动手感与健康页一致；顶部视频/PetSwitchBar 保持固定
-          Positioned(
-            top: videoBandH,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: SingleChildScrollView(
-              controller: _scrollCtrl,
-              // 顶部留呼吸间距，左右留 12 与安全区对齐（与健康页一致），底部留白避开悬浮胶囊
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  _AiDailyCard(),
-                  SizedBox(height: 12),
-                  _AgentDynamicCard(),
-                  SizedBox(height: 12),
-                  _TimelineCard(),
-                ],
-              ),
-            ),
-          ),
-          // 固定切换条：叠在视频之上，不随滚动移动
+          // 固定切换条：叠在视频之上，不随滚动移动。
+          // 必须保持 Positioned 定位：Stack 默认 fit:loose 会以非定位子元素
+          // 尺寸决定自身高度，一旦 PetSwitchBar 非定位就会把整屏压成一条。
           Positioned(
             top: 0,
             left: 0,
@@ -127,7 +117,8 @@ class _HomePageState extends State<HomePage> {
             child: _PetSwitchBar(
               scrollOffset: _scrollOffset,
               topInset: topInset,
-              bgColor: _bgColor ?? const Color(0xFFEFE9E6),
+              // 淡入底色用半透明白，与内容面板统一（视频始终透出）
+              bgColor: Colors.white.withValues(alpha: 0.9),
             ),
           ),
         ],
@@ -477,8 +468,11 @@ class _PetSwitchBar extends StatelessWidget {
     final name = pet.selectedPet?.nickname.isNotEmpty == true
         ? pet.selectedPet!.nickname
         : '超级喵克，哎喵';
-    // 滚动约 80px 内将背景从透明渐变到页面底色，避免突兀
+    // t：向下滚动时顶栏背景（半透明白）渐显，遮住滚上来的卡片、保持顶部干净；
+    // contentOpacity：宠物切换内容（昵称 / 切换图标 / 问候语）随滚动上移而渐隐，
+    // 让「视频上的切换宠物」平滑隐藏，而不是一直浮在内容之上。
     final t = (scrollOffset / 80).clamp(0, 1);
+    final contentOpacity = (1 - scrollOffset / 120).clamp(0, 1).toDouble();
     return Container(
       width: double.infinity,
       padding: EdgeInsets.only(
@@ -488,6 +482,7 @@ class _PetSwitchBar extends StatelessWidget {
         bottom: 10,
       ),
       decoration: BoxDecoration(
+        // 不铺背景填充：仅保留滚动后底部细线（原行为），切换内容靠透明度渐隐即可
         border: t > 0
             ? Border(
                 bottom: BorderSide(
@@ -497,45 +492,51 @@ class _PetSwitchBar extends StatelessWidget {
               )
             : null,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 仅这一行可点按弹窗，避免整块拦截下方内容的手势
-          GestureDetector(
-            onTap: () => showPetPicker(context, pet),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: Text(
-                    name,
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
+      child: Opacity(
+        opacity: contentOpacity,
+        child: IgnorePointer(
+          ignoring: contentOpacity < 0.05,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 仅这一行可点按弹窗，避免整块拦截下方内容的手势
+              GestureDetector(
+                onTap: () => showPetPicker(context, pet),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        name,
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                    const SizedBox(width: 4),
+                    const Image(
+                      image: AssetImage('assets/images/icon/swich-1.png'),
+                      width: 13,
+                      height: 13,
+                      color: Color(0xFF7F6370),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 4),
-                const Image(
-                  image: AssetImage('assets/images/icon/swich-1.png'),
-                  width: 13,
-                  height: 13,
-                  color: Color(0xFF7F6370),
+              ),
+              SizedBox(height: token.spacer / 2),
+              Text(
+                '铲屎官，早上好呀~',
+                style: TextStyle(
+                  color: Colors.black87,
+                  fontSize: 13,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          SizedBox(height: token.spacer / 2),
-          Text(
-            '铲屎官，早上好呀~',
-            style: TextStyle(
-              color: Colors.black87,
-              fontSize: 13,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
