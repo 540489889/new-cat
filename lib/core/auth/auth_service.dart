@@ -126,6 +126,30 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  /// 读取本地 Access Token 过期时间戳（毫秒），未存储返回 null。
+  static Future<int?> getAccessTokenExpiresAt() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getInt('${_tokenKey}_expires_at');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Access Token 是否临近过期（默认剩余不足 5 分钟）或本地无过期信息。
+  ///
+  /// 用于**主动续期**：在令牌彻底失效前提前刷新，避免「令牌已过期 → 401 →
+  /// 又拿已过期令牌去刷新」的死锁（服务端 /app/token/refresh 要求刷新时
+  /// Authorization 头的 Access Token 仍有效）。
+  static Future<bool> isAccessTokenNearExpiry({
+    Duration threshold = const Duration(minutes: 5),
+  }) async {
+    final exp = await getAccessTokenExpiresAt();
+    if (exp == null) return true; // 无信息：保守起见也尝试刷新
+    final remaining = exp - DateTime.now().millisecondsSinceEpoch;
+    return remaining <= threshold.inMilliseconds;
+  }
+
   /// 持久化 Token（供 ApiClient 401 刷新后回写）。
   static Future<void> saveToken({
     required String accessToken,
@@ -145,16 +169,22 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  /// 用 Refresh Token 刷新 Access Token。
+  /// 刷新 Access Token。
+  ///
+  /// 后端 /app/token/refresh 的 Authorization 头要求携带 **Access Token**
+  /// （若误带 Refresh Token 会返回「令牌类型错误，请使用Access Token」），
+  /// 故此处用本地存储的 access_token 作为请求凭证；refresh_token 一并兜底
+  /// 放入请求体（接口文档标注无参数，带上不影响，且服务端若需校验刷新令牌也能用上）。
   static Future<LoginResult> refreshToken(String? refreshToken) async {
-    if (refreshToken == null || refreshToken.isEmpty) {
-      debugPrint('[AuthService] refreshToken 跳过：Refresh Token 为空');
-      return LoginResult.fail('Refresh Token 为空');
+    final accessToken = await getAccessToken();
+    if (accessToken == null || accessToken.isEmpty) {
+      debugPrint('[AuthService] refreshToken 跳过：Access Token 为空');
+      return LoginResult.fail('Access Token 为空');
     }
     final uri = Uri.parse('${ApiConfig.baseUrl}/app/token/refresh');
-    // 脱敏打印 refresh token，既能确认「有没有发出去」，又不泄露完整令牌
-    final mask = refreshToken.length > 8
-        ? '${refreshToken.substring(0, 4)}…${refreshToken.substring(refreshToken.length - 4)}'
+    // 脱敏打印 access token，确认「有没有发出去」，又不泄露完整令牌
+    final mask = accessToken.length > 8
+        ? '${accessToken.substring(0, 4)}…${accessToken.substring(accessToken.length - 4)}'
         : '***';
     debugPrint(
       '[AuthService] refreshToken 请求 url=$uri Authorization=Bearer $mask',
@@ -164,7 +194,13 @@ class AuthService extends ChangeNotifier {
       response = await http
           .post(
             uri,
-            headers: {'Authorization': 'Bearer $refreshToken'},
+            headers: {
+              'Authorization': 'Bearer $accessToken',
+              'Content-Type': 'application/json; charset=utf-8',
+            },
+            body: refreshToken != null && refreshToken.isNotEmpty
+                ? jsonEncode({'refreshToken': refreshToken})
+                : null,
           )
           .timeout(const Duration(seconds: ApiConfig.connectTimeout));
       final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -267,7 +303,11 @@ class AuthService extends ChangeNotifier {
             expiresIn: _toInt(data['expires_in']) ?? 1800,
             userInfo: data['memberInfo'] as Map<String, dynamic>?,
           );
-          await _persistToken(result.accessToken!, result.refreshToken!);
+          await _persistToken(
+            result.accessToken!,
+            result.refreshToken!,
+            expiresIn: result.expiresIn ?? 1800,
+          );
           _loggedIn = true;
           notifyListeners();
           return result;
@@ -300,12 +340,17 @@ class AuthService extends ChangeNotifier {
 
   static Future<void> _persistToken(
     String accessToken,
-    String refreshToken,
-  ) async {
+    String refreshToken, {
+    int expiresIn = 1800,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_tokenKey, accessToken);
       await prefs.setString(_refreshTokenKey, refreshToken);
+      await prefs.setInt(
+        '${_tokenKey}_expires_at',
+        DateTime.now().millisecondsSinceEpoch + expiresIn * 1000,
+      );
     } catch (_) {
       // 插件不可用时忽略本地持久化
     }

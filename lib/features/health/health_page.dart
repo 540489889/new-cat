@@ -164,7 +164,7 @@ class _PetAvatar extends StatelessWidget {
         // headimg 为空时回退到本地图
         child: head.isNotEmpty
             ? Image.network(head, fit: BoxFit.cover)
-            : Image.asset('assets/images/hero_cat.jpg', fit: BoxFit.cover),
+            : Image.asset('assets/images/group-1.png', fit: BoxFit.cover),
       ),
     );
   }
@@ -983,7 +983,11 @@ class _AiBar extends StatelessWidget {
             child: Text('有什么问题都可以问我~',
                 style: TextStyle(fontSize: 13, color: HealthPage._sub)),
           ),
-          const Icon(Icons.mic_none, size: 20, color: HealthPage._ink),
+          Image.asset(
+            'assets/images/icon/voice-ico.png',
+            width: 20,
+            height: 20,
+          ),
           const SizedBox(width: 8),
           Container(
             width: 36,
@@ -993,7 +997,11 @@ class _AiBar extends StatelessWidget {
               color: HealthPage._brand,
             ),
             alignment: Alignment.center,
-            child: const Icon(Icons.send, size: 16, color: Colors.white),
+            child: Image.asset(
+              'assets/images/icon/send-ico.png',
+              width: 18,
+              height: 18,
+            ),
           ),
         ],
       ),

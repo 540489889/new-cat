@@ -51,6 +51,14 @@ class ApiClient {
     Map<String, dynamic>? body,
   ) async {
     try {
+      // 主动续期：Access Token 临近过期时先刷新再发请求，避免拿已过期令牌请求
+      // → 401 → 又用已过期令牌刷新而死锁（服务端要求刷新时 Access Token 仍有效）。
+      final current = await AuthService.getAccessToken();
+      if (current != null &&
+          current.isNotEmpty &&
+          await AuthService.isAccessTokenNearExpiry()) {
+        await _tryRefresh();
+      }
       final headers = <String, String>{..._jsonHeaders};
       final token = await AuthService.getAccessToken();
       if (token != null && token.isNotEmpty) {
@@ -120,7 +128,8 @@ class ApiClient {
 
   Future<bool> _doRefresh() async {
     final refresh = await AuthService.getRefreshToken();
-    if (refresh == null || refresh.isEmpty) return false;
+    // 刷新凭证改为 access token（由 refreshToken 内部从本地读取），
+    // 这里不再以 refresh token 是否为空作为前置拦截。
     final result = await AuthService.refreshToken(refresh);
     if (result.isSuccess && (result.accessToken?.isNotEmpty ?? false)) {
       await AuthService.saveToken(

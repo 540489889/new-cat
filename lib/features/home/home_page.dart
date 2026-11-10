@@ -53,6 +53,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).padding.top;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
     final screenH = MediaQuery.of(context).size.height;
     // 视频占顶部约 38% 屏高，作为「随滚动离场的 Hero 头」；
     // 与下方内容同属一条滚动流，一起上移，消除「钉死视频 + 独立列表」的割裂感
@@ -90,8 +91,10 @@ class _HomePageState extends State<HomePage> {
                 // 卡片直接浮在视频之上，让视频完整透出、更好地融入
                 SliverToBoxAdapter(
                   child: Container(
-                    // 左右留 12；顶部留白 0（配合上面 -20，首张卡片正好压在视频底部）；底部留白避开悬浮胶囊
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 96),
+                    // 左右留 12；顶部留白 0（配合上面 -20，首张卡片正好压在视频底部）；
+                    // 底部留白 = bottomInset + 76：避开底部胶囊 TabBar，并给 AI 浮条
+                    // 上方留出约 20px 安全距离（浮条高 48、距底 bottomInset+8，顶部到 bottomInset+56）
+                    padding: EdgeInsets.fromLTRB(12, 0, 12, bottomInset + 76),
                     child: const Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -121,6 +124,13 @@ class _HomePageState extends State<HomePage> {
               bgColor: Colors.white.withValues(alpha: 0.9),
             ),
           ),
+          // 底部 AI 问答浮条：与健康页/宠物页一致，紧贴胶囊 TabBar 上方
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: bottomInset + 8,
+            child: const _AiBar(),
+          ),
         ],
       ),
     );
@@ -130,7 +140,7 @@ class _HomePageState extends State<HomePage> {
 /// 顶部视频区：全宽通栏、从屏幕最顶端（含状态栏）铺下来，无圆角。
 /// 视频地址来自后端「宠物展示信息」接口（/app/pet/show 的 mediaUrl）。
 /// 未查询到视频或视频未就绪时显示封面图（接口 imgUrl，无则本地
-/// hero_cat.jpg 兜底），视频就绪后封面淡出、media_kit 静音循环播放。
+/// group-1.png 兜底），视频就绪后封面淡出、media_kit 静音循环播放。
 /// 标题叠加在视频之上，点击宠物名 / 切换图标弹出宠物选择面板。
 class _HeroVideo extends StatefulWidget {
   /// 当前页面背景色（由视频底色驱动），用于视频底部渐变融入。
@@ -394,12 +404,12 @@ class _HeroVideoState extends State<_HeroVideo> with WidgetsBindingObserver {
                       pet.coverUrl!,
                       fit: BoxFit.cover,
                       errorBuilder: (_, _, _) => Image.asset(
-                        'assets/images/hero_cat.jpg',
+                        'assets/images/group-1.png',
                         fit: BoxFit.cover,
                       ),
                     )
                   : Image.asset(
-                      'assets/images/hero_cat.jpg',
+                      'assets/images/group-1.png',
                       fit: BoxFit.cover,
                     ),
             ),
@@ -468,10 +478,8 @@ class _PetSwitchBar extends StatelessWidget {
     final name = pet.selectedPet?.nickname.isNotEmpty == true
         ? pet.selectedPet!.nickname
         : '超级喵克，哎喵';
-    // t：向下滚动时顶栏背景（半透明白）渐显，遮住滚上来的卡片、保持顶部干净；
     // contentOpacity：宠物切换内容（昵称 / 切换图标 / 问候语）随滚动上移而渐隐，
     // 让「视频上的切换宠物」平滑隐藏，而不是一直浮在内容之上。
-    final t = (scrollOffset / 80).clamp(0, 1);
     final contentOpacity = (1 - scrollOffset / 120).clamp(0, 1).toDouble();
     return Container(
       width: double.infinity,
@@ -480,17 +488,6 @@ class _PetSwitchBar extends StatelessWidget {
         left: 16,
         right: 16,
         bottom: 10,
-      ),
-      decoration: BoxDecoration(
-        // 不铺背景填充：仅保留滚动后底部细线（原行为），切换内容靠透明度渐隐即可
-        border: t > 0
-            ? Border(
-                bottom: BorderSide(
-                  color: Colors.black.withValues(alpha: 0.06 * t),
-                  width: 0.5,
-                ),
-              )
-            : null,
       ),
       child: Opacity(
         opacity: contentOpacity,
@@ -519,8 +516,8 @@ class _PetSwitchBar extends StatelessWidget {
                     const SizedBox(width: 4),
                     const Image(
                       image: AssetImage('assets/images/icon/swich-1.png'),
-                      width: 13,
-                      height: 13,
+                      width: 10,
+                      height: 10,
                       color: Color(0xFF7F6370),
                     ),
                   ],
@@ -537,6 +534,64 @@ class _PetSwitchBar extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 底部 AI 问答浮条：与健康页/宠物页一致（白底 + 阴影，紧贴胶囊 TabBar 上方），
+/// 麦克风/发送图标复用项目资源图（voice-ico.png / send-ico.png）。
+class _AiBar extends StatelessWidget {
+  const _AiBar();
+
+  static const Color _brand = Color(0xFF7F6370);
+  static const Color _sub = Color(0xFF9A8F93);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.only(left: 14, right: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x143D2E33),
+            blurRadius: 16,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.auto_awesome, size: 18, color: _brand),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text('有什么问题都可以问我~',
+                style: TextStyle(fontSize: 13, color: _sub)),
+          ),
+          Image.asset(
+            'assets/images/icon/voice-ico.png',
+            width: 20,
+            height: 20,
+          ),
+          const SizedBox(width: 8),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: _brand,
+            ),
+            alignment: Alignment.center,
+            child: Image.asset(
+              'assets/images/icon/send-ico.png',
+              width: 18,
+              height: 18,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -694,6 +749,7 @@ typedef _AgentBadge = ({String label, Color fg, Color bg});
 /// 单条 Agent 动态数据。
 typedef _AgentData = ({
   IconData icon,
+  String? iconAsset,
   String title,
   String time,
   List<_AgentBadge> badges,
@@ -715,6 +771,7 @@ class _AgentDynamicCard extends StatelessWidget {
     const List<_AgentData> blocks = [
       (
         icon: Icons.favorite,
+        iconAsset: 'assets/images/icon/agent-ico-1.png',
         title: '健康守护',
         time: '10 分钟前',
         badges: [
@@ -727,6 +784,7 @@ class _AgentDynamicCard extends StatelessWidget {
       ),
       (
         icon: Icons.water_drop,
+        iconAsset: null,
         title: '饮水提醒',
         time: '32 分钟前',
         badges: [(label: '提醒', fg: Color(0xFF7F6370), bg: Color(0xFFF3ECEA))],
@@ -737,6 +795,7 @@ class _AgentDynamicCard extends StatelessWidget {
       ),
       (
         icon: Icons.visibility,
+        iconAsset: null,
         title: '行为观察',
         time: '1 小时前',
         badges: [(label: '正常', fg: Color(0xFF4C9A6B), bg: Color(0xFFE6F3EB))],
@@ -747,6 +806,7 @@ class _AgentDynamicCard extends StatelessWidget {
       ),
       (
         icon: Icons.restaurant,
+        iconAsset: null,
         title: '饮食管理',
         time: '2 小时前',
         badges: [(label: '待确认', fg: Color(0xFFE05A5A), bg: Color(0xFFFBE5E5))],
@@ -824,16 +884,19 @@ class _AgentBlock extends StatelessWidget {
           // 头部：图标 + 标题 + 时间 + 右侧角标
           Row(
             children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: _iconBg,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                alignment: Alignment.center,
-                child: Icon(data.icon, color: Colors.white, size: 22),
-              ),
+              data.iconAsset != null
+                  ? Image.asset(data.iconAsset!,
+                      width: 40, height: 40, fit: BoxFit.contain)
+                  : Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: _iconBg,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(data.icon, color: Colors.white, size: 22),
+                    ),
               const SizedBox(width: 10),
               Expanded(
                 child: Row(
@@ -944,10 +1007,11 @@ class _AgentBlock extends StatelessWidget {
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: const Color(0xFFE5E0E2)),
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.chat_bubble_outline, size: 16, color: Color(0xFF3A3A3A)),
+            Image.asset('assets/images/icon/agent-ico-2.png',
+                width: 16, height: 16, fit: BoxFit.contain),
             SizedBox(width: 6),
             Text('问问AI',
                 style: TextStyle(

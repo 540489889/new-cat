@@ -16,6 +16,23 @@ class PetPage extends StatelessWidget {
   static const Color _pinkText = Color(0xFFB08CA0); // 链接/标签粉
   static const Color _iconBg = Color(0xFFF7F5F0); // 功能卡图标底（浅暖白）
   static const Color _tagBg = Color(0xFFF6ECEF); // 标签底
+  static const Color _brand = Color(0xFF7F6370); // 品牌紫（AI 浮条）
+  // 顶部渐变（与健康页同款）：深紫棕→粉紫→浅粉，底部透明融入页面暖米底
+  static const LinearGradient _topGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [
+      Color(0xFF8E6B84), // 顶部深紫棕
+      Color(0xFFB48CA3), // 中部粉紫
+      Color(0xFFE5D2DC), // 浅粉紫
+      Color(0x00E5D2DC), // 渐变底部透明，卡片可透过显示
+    ],
+    stops: [0.0, 0.42, 0.72, 0.89],
+  );
+
+  /// 顶部渐变背景层的总高度额外量（实际高度 = topInset + 该值）。
+  /// 标题栏渐变按同一总高度映射，保证两段渐变无缝融为一体。
+  static const double _gradientHeightExtra = 300.0;
 
   @override
   Widget build(BuildContext context) {
@@ -27,27 +44,48 @@ class PetPage extends StatelessWidget {
       backgroundColor: _bg,
       body: Stack(
         children: [
-          SingleChildScrollView(
-            // 顶部留白 = 固定标题栏高度，避免首张卡片被标题遮挡
-            padding: EdgeInsets.only(top: topInset + 56, bottom: bottomPad),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 注意：这里刻意不用 const —— const 无参实例在热重载时会被
-                // 判定为 identical 而跳过整个子树重建，导致改动不生效
-                _PetProfileCard(),
-                _FeatureGrid(),
-                _AdventureDiaryCard(),
-                _HighlightsCard(),
-              ],
+          // 顶部渐变背景层（置于内容之后）：标题区与档案卡初始位置都落在渐变上；
+          // 滚动时白色卡片盖住渐变，仅在卡片四周/间隙透出渐变，档案卡随内容一起滚动
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: topInset + PetPage._gradientHeightExtra,
+            child: Container(
+              decoration: const BoxDecoration(gradient: PetPage._topGradient),
             ),
           ),
-          // 顶部固定标题栏（不随滚动移动）
+          // 滚动内容铺底层（档案卡/宫格/日记/集锦）；档案卡为首个元素，随内容滚动
+          Positioned.fill(
+            child: SingleChildScrollView(
+              // 顶部留白 = 固定标题栏高度(topInset+58) + 间隙，保证首张档案卡完全在标题栏下方、不被其渐变背景遮挡
+              padding: EdgeInsets.only(top: topInset + 72, bottom: bottomPad),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 注意：这里刻意不用 const —— const 无参实例在热重载时会被
+                  // 判定为 identical 而跳过整个子树重建，导致改动不生效
+                  _PetProfileCard(),
+                  _FeatureGrid(),
+                  _AdventureDiaryCard(),
+                  _HighlightsCard(),
+                ],
+              ),
+            ),
+          ),
+          // 顶部固定标题栏（在内容之上）：自带渐变背景，仅放标题，不随滚动移动
           Positioned(
             top: 0,
             left: 0,
             right: 0,
             child: _Header(topInset: topInset),
+          ),
+          // 底部 AI 问答浮条：与健康页一致，紧贴胶囊 TabBar 上方
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: bottomInset + 8,
+            child: const _AiBar(),
           ),
         ],
       ),
@@ -55,7 +93,8 @@ class PetPage extends StatelessWidget {
   }
 }
 
-/// 顶部标题栏：宠物 + 数量角标 + 右侧添加按钮。
+/// 顶部渐变标题栏：仅放标题（宠物 + 数量 + 添加按钮），渐变与健康页同款；
+/// 固定不滚、压在滚动内容之上——滚动时档案卡从下方滑入其下沿被遮住。
 class _Header extends StatelessWidget {
   final double topInset;
   const _Header({required this.topInset});
@@ -63,9 +102,22 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final count = context.watch<PetState>().pets.length;
+    // 标题栏自身高度（= 顶部留白 + 按钮36 + 底部留白）
+    final titleH = topInset + 10 + 36 + 12;
+    // 与背景层共用同一渐变总高（改背景层高度时两处自动同步）
+    final bgH = topInset + PetPage._gradientHeightExtra;
+    // 把渐变 end 推到「背景总高度」处：标题栏只取整条渐变的顶部一段，
+    // 其下沿颜色与下方背景层在同一 y 的颜色完全一致 → 上下无缝融为一体
+    final endY = 2 * bgH / titleH - 1;
     return Container(
-      // 固定标题栏背景与页面同色，滚动时卡片从其下方滑过
-      color: PetPage._bg,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: const Alignment(0.0, -1.0),
+          end: Alignment(0.0, endY),
+          colors: PetPage._topGradient.colors,
+          stops: PetPage._topGradient.stops,
+        ),
+      ),
       padding: EdgeInsets.only(left: 16, right: 16, top: topInset + 10, bottom: 12),
       child: Row(
         children: [
@@ -76,20 +128,40 @@ class _Header extends StatelessWidget {
           Text('$count',
               style: const TextStyle(fontSize: 12, color: Color(0xFFB9AEB2))),
           const Spacer(),
+          // 添加宠物：白色胶囊按钮（浅色圆 + 号 + 文字）
           GestureDetector(
             onTap: () {}, // TODO: 添加宠物
             child: Container(
-              width: 32,
-              height: 32,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF7F6370), Color(0xFF9E6F84)],
-                ),
-                shape: BoxShape.circle,
+              height: 36,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
               ),
-              child: const Icon(Icons.add, color: Colors.white, size: 20),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 浅色小圆 + 深色加号
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Color(0xFFF1EBEE),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.add,
+                          size: 13, color: Color(0xFF5C4A50)),
+                    ),
+                  ),
+                  SizedBox(width: 6),
+                  Text('添加宠物',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: PetPage._ink)),
+                ],
+              ),
             ),
           ),
         ],
@@ -181,7 +253,7 @@ class _PetProfileCardState extends State<_PetProfileCard> {
 
     ImageProvider avatarImg(String h) => h.isNotEmpty
         ? NetworkImage(h)
-        : const AssetImage('assets/images/hero_cat.jpg');
+        : const AssetImage('assets/images/group-1.png');
 
     // 大头像（当前宠物带粉色描边圆，侧边探出的不带）
     Widget bigAvatar(String h, {bool ringed = true}) => Container(
@@ -241,6 +313,8 @@ class _PetProfileCardState extends State<_PetProfileCard> {
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      // 白卡样式（保留原始设计）：白色圆角卡片 + 四角浅色同心圆装饰，
+      // 浮于渐变头部之上，渐变在卡片四周/上方透出作为页面顶部背景
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -478,40 +552,62 @@ class _AdventureDiaryCard extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: Image.asset(
-                  'assets/images/cat_playing.jpg',
-                  width: 96,
-                  height: 76,
+                  'assets/images/icon/group-banner-1.png',
+                  width: 80,
+                  height: 96,
                   fit: BoxFit.cover,
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('窗台守望者',
+                    const Text('窗台守望者',
                         style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
                             color: PetPage._ink)),
-                    SizedBox(height: 4),
-                    Text(
-                      '今天阳光特别好，窗户外那只橙色的大橙大虎走过… 小白拍了…',
+                    const SizedBox(height: 4),
+                    const Text(
+                      '今天阳光特别好。窗外那只橘色的家伙大摇大摆走过， 小白拍了…',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                           fontSize: 12, color: PetPage._sub, height: 1.4),
                     ),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     Row(
                       children: [
-                        Text('冒险日记 · 第12周',
+                        // 标签胶囊：第12周（粉）
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: PetPage._tagBg,
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          child: const Text('第12周',
+                              style: TextStyle(
+                                  fontSize: 11, color: PetPage._pinkText)),
+                        ),
+                        const SizedBox(width: 8),
+                        // 标签胶囊：已更新（绿）
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F2E7),
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          child: const Text('已更新',
+                              style: TextStyle(
+                                  fontSize: 11, color: Color(0xFF5E9E6A))),
+                        ),
+                        const Spacer(),
+                        const Text('09-28 10:30',
                             style: TextStyle(
-                                fontSize: 11, color: PetPage._pinkText)),
-                        Spacer(),
-                        Text('09-28 10:30',
-                            style: TextStyle(
-                                fontSize: 11, color: Color(0xFFC0B5B9))),
+                                fontSize: 13, color: Color(0xFFC0B5B9))),
                       ],
                     ),
                   ],
@@ -533,14 +629,14 @@ class _HighlightsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     const items = [
       (
-        image: 'assets/images/cat_eating.jpg',
+        image: 'assets/images/group-1.png',
         duration: '0:32',
         title: '超级神虎第一次喝水',
         date: '2026-09-28 10:30',
         tags: ['精彩瞬间', '设备记录', 'AI识别'],
       ),
       (
-        image: 'assets/images/cat_cleaning.jpg',
+        image: 'assets/images/group-1.png',
         duration: '0:24',
         title: '超级神虎学会了使用猫砂盆',
         date: '2026-09-28 08:22',
@@ -592,19 +688,26 @@ class _HighlightItem extends StatelessWidget {
               ),
             ),
             // 居中播放按钮
-            const Center(
+            Center(
               child: SizedBox(
                 height: 180,
                 child: Center(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: Color(0x66FFFFFF),
+                      color: Color(0x66000000),
                       shape: BoxShape.circle,
                     ),
-                    child: Padding(
-                      padding: EdgeInsets.all(10),
-                      child: Icon(Icons.play_arrow,
-                          color: Colors.white, size: 28),
+                    child: SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: Center(
+                        child: Image.asset(
+                          'assets/images/icon/vector-ico.png',
+                          width: 22,
+                          height: 22,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -672,6 +775,60 @@ class _HighlightItem extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// 底部 AI 问答浮条：与健康页一致（白底 + 阴影，紧贴胶囊 TabBar 上方）。
+class _AiBar extends StatelessWidget {
+  const _AiBar();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.only(left: 14, right: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x143D2E33),
+            blurRadius: 16,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.auto_awesome, size: 18, color: PetPage._brand),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text('有什么问题都可以问我~',
+                style: TextStyle(fontSize: 13, color: PetPage._sub)),
+          ),
+          Image.asset(
+            'assets/images/icon/voice-ico.png',
+            width: 20,
+            height: 20,
+          ),
+          const SizedBox(width: 8),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: PetPage._brand,
+            ),
+            alignment: Alignment.center,
+            child: Image.asset(
+              'assets/images/icon/send-ico.png',
+              width: 18,
+              height: 18,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

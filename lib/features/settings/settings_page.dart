@@ -11,7 +11,6 @@ class SettingsPage extends StatelessWidget {
   static const Color _ink = Color(0xFF3D2E33); // 主文字
   static const Color _sub = Color(0xFFA89EA2); // 次要文字
   static const Color _brand = Color(0xFF7F6370); // 品牌紫
-  static const Color _brandLight = Color(0xFF9E6F84); // 品牌紫（浅）
   static const Color _iconBg = Color(0xFFF3E9EF); // 图标圆底
   static const Color _cardBg = Color(0xFFF7F5F0); // 浅暖白（设备图底/图标底）
   static const Color _divider = Color(0xFFF1EAE4); // 细分隔线
@@ -53,9 +52,9 @@ class SettingsPage extends StatelessWidget {
               ),
             ),
             const _ProfileHeader(),
-            const SizedBox(height: 16),
-            const _VipBanner(),
-            const SizedBox(height: 12),
+            // 会员权益：直接使用设计稿图片（icon/u-member.png，图片自带四周间距，故上下不再额外加间距）
+            Image.asset('assets/images/icon/u-member.png',
+                width: double.infinity, fit: BoxFit.fitWidth),
             const _ShopCard(),
             const SizedBox(height: 12),
             const _DeviceCard(),
@@ -128,7 +127,7 @@ class _ProfileHeader extends StatelessWidget {
               color: SettingsPage._iconBg,
             ),
             clipBehavior: Clip.antiAlias,
-            child: Image.asset('assets/images/hero_cat.jpg', fit: BoxFit.cover),
+            child: Image.asset('assets/images/group-1.png', fit: BoxFit.cover),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -176,63 +175,6 @@ class _DecoRings extends StatelessWidget {
                 border: Border.all(color: const Color(0xFFF0E6E1), width: 1),
               ),
             ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 会员权益横幅：品牌紫渐变 + 钻石图标 + 立即开通按钮
-class _VipBanner extends StatelessWidget {
-  const _VipBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        gradient: const LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [SettingsPage._brand, SettingsPage._brandLight],
-        ),
-      ),
-      child: Row(
-        children: [
-          // 钻石图标（无背景，直接绘于横幅渐变上）
-          const Icon(Icons.diamond_outlined, size: 24, color: Colors.white),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text('会员权益',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white)),
-                SizedBox(height: 3),
-                Text('开通会员，解锁全部权益',
-                    style: TextStyle(
-                        fontSize: 11, color: Color(0xFFE8DCE2))),
-              ],
-            ),
-          ),
-          // 立即开通按钮（浅金底）
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF5E7CF),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: const Text('立即开通',
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF6B4A3A))),
-          ),
         ],
       ),
     );
