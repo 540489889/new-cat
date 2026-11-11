@@ -11,9 +11,8 @@ class SettingsPage extends StatelessWidget {
   static const Color _ink = Color(0xFF3D2E33); // 主文字
   static const Color _sub = Color(0xFFA89EA2); // 次要文字
   static const Color _brand = Color(0xFF7F6370); // 品牌紫
-  static const Color _iconBg = Color(0xFFF3E9EF); // 图标圆底
   static const Color _cardBg = Color(0xFFF7F5F0); // 浅暖白（设备图底/图标底）
-  static const Color _divider = Color(0xFFF1EAE4); // 细分隔线
+  static const Color _divider = Color(0x66F1EAE4); // 细分隔线（与今日状态统一：同色 40% 不透明度）
   static const Color _goodBg = Color(0xFFE7F2E7); // 绿标签底
   static const Color _goodInk = Color(0xFF4E9B58); // 绿标签字
   static const Color _warnBg = Color(0xFFFBEEE0); // 橙标签底
@@ -119,15 +118,25 @@ class _ProfileHeader extends StatelessWidget {
       child: Row(
         children: [
           // 头像（本地猫图占位，接入用户中心后替换为真实头像）
+          // 白色边框（白底 + 内间距形成白环）+ 内间距 + 阴影
           Container(
             width: 72,
             height: 72,
-            decoration: const BoxDecoration(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: SettingsPage._iconBg,
+              color: Colors.white,
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x1A3D2E33),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
+              ],
             ),
-            clipBehavior: Clip.antiAlias,
-            child: Image.asset('assets/images/group-1.png', fit: BoxFit.cover),
+            child: ClipOval(
+              child: Image.asset('assets/images/group-1.png', fit: BoxFit.cover),
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(

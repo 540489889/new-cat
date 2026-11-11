@@ -14,7 +14,6 @@ class PetPage extends StatelessWidget {
   static const Color _ink = Color(0xFF3D2E33); // 主文字
   static const Color _sub = Color(0xFFA89EA2); // 次要文字
   static const Color _pinkText = Color(0xFFB08CA0); // 链接/标签粉
-  static const Color _iconBg = Color(0xFFF7F5F0); // 功能卡图标底（浅暖白）
   static const Color _tagBg = Color(0xFFF6ECEF); // 标签底
   static const Color _brand = Color(0xFF7F6370); // 品牌紫（AI 浮条）
   // 顶部渐变（与健康页同款）：深紫棕→粉紫→浅粉，底部透明融入页面暖米底
@@ -59,7 +58,7 @@ class PetPage extends StatelessWidget {
           Positioned.fill(
             child: SingleChildScrollView(
               // 顶部留白 = 固定标题栏高度(topInset+58) + 间隙，保证首张档案卡完全在标题栏下方、不被其渐变背景遮挡
-              padding: EdgeInsets.only(top: topInset + 72, bottom: bottomPad),
+              padding: EdgeInsets.only(top: topInset + 62, bottom: bottomPad),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -352,8 +351,22 @@ class _PetProfileCardState extends State<_PetProfileCard> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text('和$name的第108天',
-                    style: const TextStyle(fontSize: 13, color: PetPage._sub)),
+                // 陪伴天数行：点击进入宠物详情页
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () =>
+                      Navigator.of(context).pushNamed('/pet/detail'),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('和$name的第108天',
+                          style: const TextStyle(
+                              fontSize: 13, color: PetPage._sub)),
+                      const Icon(Icons.chevron_right,
+                          size: 14, color: PetPage._sub),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 16),
                 // 属性行：品种/性别/年龄/绝育/体重，均匀分布
                 Padding(
@@ -426,13 +439,13 @@ class _FeatureGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const items = [
-      ('assets/images/icon/m-a1.png', '精彩瞬间', '瞬间照片捕捉'),
-      ('assets/images/icon/m-a2.png', '真实回忆', '细节成长记录'),
-      ('assets/images/icon/m-a3.png', '时间胶囊', '成长关键节点'),
-      ('assets/images/icon/m-a4.png', '冒险日记', 'AI宠物故事'),
+      ('assets/images/icon/m-a1.png', '精彩瞬间', '瞬间照片捕捉', Color(0xFFF2EDF4)),
+      ('assets/images/icon/m-a2.png', '真实回忆', '细节成长记录', Color(0xFFEDF3F5)),
+      ('assets/images/icon/m-a3.png', '时间胶囊', '成长关键节点', Color(0xFFEEF3EA)),
+      ('assets/images/icon/m-a4.png', '冒险日记', 'AI宠物故事', Color(0xFFFAEDE8)),
     ];
     // 手动 2×2 布局：避免 GridView 嵌在滚动容器里 shrinkWrap 测高不准、撑出空隙
-    Widget tile((String, String, String) it) => Container(
+    Widget tile((String, String, String, Color) it) => Container(
           height: 76,
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -462,7 +475,7 @@ class _FeatureGrid extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: PetPage._iconBg,
+                  color: it.$4,
                   borderRadius: BorderRadius.circular(13),
                 ),
                 alignment: Alignment.center,

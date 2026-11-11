@@ -2,6 +2,7 @@ import 'package:tdesign_flutter/tdesign_flutter.dart';
 
 import '../../features/components/components_page.dart';
 import '../../features/demo/demo_detail_page.dart';
+import '../../features/pet/pet_detail_page.dart';
 import '../../shared/widgets/status_bar_style.dart';
 import '../auth/auth_gate.dart';
 
@@ -12,6 +13,7 @@ class AppRoutes {
   static const String root = '/';
   static const String demoDetail = '/demo/detail';
   static const String components = '/components';
+  static const String petDetail = '/pet/detail';
 }
 
 class AppRouter {
@@ -36,6 +38,11 @@ class AppRouter {
       case AppRoutes.components:
         return MaterialPageRoute(
           builder: (_) => const ComponentsPage(),
+          settings: settings,
+        );
+      case AppRoutes.petDetail:
+        return MaterialPageRoute(
+          builder: (_) => const PetDetailPage(),
           settings: settings,
         );
       default:

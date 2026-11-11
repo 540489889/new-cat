@@ -1,8 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
 import 'package:tdesign_flutter/tdesign_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../config/api_config.dart';
 import '../../core/auth/auth_service.dart';
 import '../../shared/widgets/status_bar_style.dart';
 
@@ -70,43 +73,44 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _mode = mode);
   }
 
-  void _ensureAgreed() {
-    if (_agreed) return;
-    TToast.showText('请先阅读并同意底部协议', context: context);
+  void _ensureAgreed(VoidCallback submit) {
+    if (_agreed) {
+      submit();
+      return;
+    }
+    _showProtocolDialog(onAgree: submit);
   }
 
   Future<void> _submitOneClick() async {
     if (_submitting) return;
-    if (!_agreed) {
-      _ensureAgreed();
-      return;
-    }
-    setState(() => _submitting = true);
-    await AuthService.instance.loginWithOneClick();
+    _ensureAgreed(() async {
+      setState(() => _submitting = true);
+      await AuthService.instance.loginWithOneClick();
+    });
   }
 
   Future<void> _submitCode() async {
     if (_submitting) return;
-    if (!_agreed) {
-      _ensureAgreed();
-      return;
-    }
+    // 先校验手机号与验证码格式
     if (!_phoneValid || !_codeValid) {
       TToast.showText('请输入正确的手机号和验证码', context: context);
       return;
     }
-    setState(() => _submitting = true);
-    final res = await AuthService.instance.loginByMobileCode(
-      _phoneController.text.trim(),
-      _codeController.text.trim(),
-    );
-    if (!mounted) return;
-    setState(() => _submitting = false);
-    // 成功时 AuthService 已置 loggedIn，AuthGate 会自动切到首页；
-    // 失败则停留在登录页并提示
-    if (!res.isSuccess) {
-      TToast.showText(res.message, context: context);
-    }
+    // 最后校验是否同意协议：未勾选则弹确认框，确认后再继续登录
+    _ensureAgreed(() async {
+      setState(() => _submitting = true);
+      final res = await AuthService.instance.loginByMobileCode(
+        _phoneController.text.trim(),
+        _codeController.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      // 成功时 AuthService 已置 loggedIn，AuthGate 会自动切到首页；
+      // 失败则停留在登录页并提示
+      if (!res.isSuccess) {
+        TToast.showText(res.message, context: context);
+      }
+    });
   }
 
   Future<void> _sendCode() async {
@@ -346,19 +350,139 @@ class _LoginPageState extends State<LoginPage> {
 
   // ---------------- 协议 ----------------
 
-  static const List<String> _agreementLinks = [
-    '《中国移动认证服务条款》',
-    '《用户协议》',
-    '《隐私政策》',
+  // 协议链接：name + 跳转地址（无地址的用占位提示）
+  static const List<({String name, String? url})> _agreementLinks = [
+    (name: '《中国移动认证服务条款》', url: null),
+    (name: '《用户协议》', url: ApiConfig.userAgreementUrl),
+    (name: '《隐私政策》', url: ApiConfig.privacyUrl),
   ];
 
   final List<TapGestureRecognizer> _recognizers = [];
 
-  TapGestureRecognizer _linkRecognizer(String name) {
+  TapGestureRecognizer _linkRecognizer(String name, String? url) {
     final recognizer = TapGestureRecognizer()
-      ..onTap = () => TToast.showText('查看「$name」（占位）', context: context);
+      ..onTap = () {
+        if (url != null) {
+          _openUrl(url);
+        } else {
+          TToast.showText('查看「$name」（占位）', context: context);
+        }
+      };
     _recognizers.add(recognizer);
     return recognizer;
+  }
+
+  Future<void> _openUrl(String url) async {
+    final uri = Uri.parse(url);
+    try {
+      if (!await canLaunchUrl(uri)) {
+        TToast.showText('无法打开链接', context: context);
+        return;
+      }
+      // platformDefault：移动端用内置浏览器、桌面端用系统浏览器，避免
+      // inAppBrowserView 在桌面不支持时静默返回 false 导致“点击没反应”
+      final launched = await launchUrl(uri, mode: LaunchMode.platformDefault);
+      if (!launched) {
+        TToast.showText('无法打开链接', context: context);
+      }
+    } catch (e) {
+      TToast.showText('无法打开链接', context: context);
+    }
+  }
+
+  /// 未勾选协议时弹出的确认框（与 f-cat 登录页一致）：
+  /// 「不同意」关闭；「同意并继续」勾选协议并执行后续登录动作。
+  void _showProtocolDialog({VoidCallback? onAgree}) {
+    final brand = context.tTheme.brandColor;
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('隐私政策和服务协议',
+                    style: TextStyle(
+                        fontSize: 17, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                RichText(
+                  textAlign: TextAlign.left,
+                  text: TextSpan(
+                    style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black87,
+                        height: 1.5),
+                    children: [
+                      const TextSpan(
+                          text: '为了更好地保障您的合法权益，请你阅读'),
+                      TextSpan(
+                        text: '《隐私政策》',
+                        style: TextStyle(color: brand),
+                        recognizer: TapGestureRecognizer()
+                          ..onTap = () => _openUrl(ApiConfig.privacyUrl),
+                      ),
+                      const TextSpan(text: '、'),
+                      TextSpan(
+                        text: '《用户协议》',
+                        style: TextStyle(color: brand),
+                        recognizer: TapGestureRecognizer()
+                          ..onTap =
+                              () => _openUrl(ApiConfig.userAgreementUrl),
+                      ),
+                      const TextSpan(text: '，点击同意后将继续登录'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.grey,
+                          side: const BorderSide(color: Colors.grey),
+                          padding: const EdgeInsets.symmetric(horizontal: 15),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                        ),
+                        child: const Text('不同意'),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          setState(() => _agreed = true);
+                          onAgree?.call();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          backgroundColor: brand,
+                          padding: const EdgeInsets.symmetric(horizontal: 15),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                        ),
+                        child: const Text('同意并继续'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildAgreement(TThemeData token) {
@@ -401,11 +525,11 @@ class _LoginPageState extends State<LoginPage> {
               ),
               children: [
                 const TextSpan(text: '我已阅读并同意'),
-                for (final name in _agreementLinks)
+                for (final link in _agreementLinks)
                   TextSpan(
-                    text: name,
+                    text: link.name,
                     style: linkStyle,
-                    recognizer: _linkRecognizer(name),
+                    recognizer: _linkRecognizer(link.name, link.url),
                   ),
                 const TextSpan(text: '并使用本机号码登录。'),
               ],

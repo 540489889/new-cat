@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/pet/pet_state.dart';
+import 'vital_records_page.dart';
 
 /// 健康页：本周健康概览 + 功能入口宫格 + 今日状态 + 近期异常 + 护理提醒 + AI 问答浮条。
 /// UI 按设计稿 1:1 还原；数据当前为本地 mock，接入后端后替换即可。
@@ -20,7 +21,6 @@ class HealthPage extends StatelessWidget {
   static const Color _goodInk = Color(0xFF4E9B58); // 绿标签字
   static const Color _warnBg = Color(0xFFFBEEE0); // 橙标签底
   static const Color _warnInk = Color(0xFFD98E3B); // 橙标签字
-  static const Color _dotRed = Color(0xFFD96A6A); // 异常红点
 
   @override
   Widget build(BuildContext context) {
@@ -511,7 +511,14 @@ class _EntryGrid extends StatelessWidget {
           children: [
             // 左：体征记录高卡（标题 + 副标题 + 标签 + 右下角大图标）
             Expanded(
-              child: card(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const VitalRecordsPage(),
+                  ),
+                ),
+                child: card(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -528,8 +535,7 @@ class _EntryGrid extends StatelessWidget {
                         width: 56,
                         height: 56,
                         decoration: BoxDecoration(
-                          // 同宠物页功能图标底色 + 圆角
-                          color: const Color(0xFFF7F5F0),
+                          color: const Color(0xFFECEEFA),
                           borderRadius: BorderRadius.circular(13),
                         ),
                         alignment: Alignment.center,
@@ -539,6 +545,7 @@ class _EntryGrid extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
               ),
             ),
             const SizedBox(width: 10),
@@ -565,7 +572,7 @@ class _EntryGrid extends StatelessWidget {
                             width: 44,
                             height: 44,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF7F5F0),
+                              color: const Color(0xFFE5F3EE),
                               borderRadius: BorderRadius.circular(13),
                             ),
                             alignment: Alignment.center,
@@ -596,7 +603,7 @@ class _EntryGrid extends StatelessWidget {
                             width: 44,
                             height: 44,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF7F5F0),
+                              color: const Color(0xFFF2EDF4),
                               borderRadius: BorderRadius.circular(13),
                             ),
                             alignment: Alignment.center,
@@ -623,7 +630,8 @@ class _TodayCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget divider() => Container(height: 1, color: const Color(0xFFF1EAE4));
+    // 分隔线：1px 逻辑像素，适中不透明度 → 清晰可见的细发丝线（不过粗也不过淡）
+    Widget divider() => Container(height: 1, color: const Color(0x66F1EAE4));
     return _Card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -632,6 +640,7 @@ class _TodayCard extends StatelessWidget {
           const SizedBox(height: 12),
           const _TodayRow(
             icon: 'assets/images/icon/m-c1.png',
+            iconBg: Color(0xFF80BFD0),
             title: '饮水',
             note: '来自饮水器 A',
             tag: _Tag('正常', bg: HealthPage._goodBg, ink: HealthPage._goodInk),
@@ -642,6 +651,7 @@ class _TodayCard extends StatelessWidget {
           const SizedBox(height: 12),
           const _TodayRow(
             icon: 'assets/images/icon/m-c2.png',
+            iconBg: Color(0xFFE8B99F),
             title: '进食',
             note: '粮仓 A 为主',
             tag: _Tag('偏少', bg: HealthPage._warnBg, ink: HealthPage._warnInk),
@@ -652,6 +662,7 @@ class _TodayCard extends StatelessWidget {
           const SizedBox(height: 12),
           const _TodayRow(
             icon: 'assets/images/icon/m-c3.png',
+            iconBg: Color(0xFF82BFA9),
             title: '运动',
             note: '来自摄像头 A',
             tag: _Tag('稳定', bg: HealthPage._goodBg, ink: HealthPage._goodInk),
@@ -666,12 +677,14 @@ class _TodayCard extends StatelessWidget {
 /// 今日状态单行：圆角方底图标（m-c 系列）+ 名称/来源 + 状态标签 + 标签/数值行。
 class _TodayRow extends StatelessWidget {
   final String icon; // 图标资源路径
+  final Color iconBg; // 图标圆角方底背景色
   final String title;
   final String note;
   final _Tag tag;
   final List<(String, String)> stats; // (灰色标签, 深色数值)
   const _TodayRow({
     required this.icon,
+    required this.iconBg,
     required this.title,
     required this.note,
     required this.tag,
@@ -688,7 +701,7 @@ class _TodayRow extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: const Color(0xFFF7F5F0),
+            color: iconBg,
             borderRadius: BorderRadius.circular(13),
           ),
           alignment: Alignment.center,
@@ -760,7 +773,7 @@ class _AbnormalCard extends StatelessWidget {
           const _CardHeader(title: '近期异常', action: '全部'),
           const SizedBox(height: 12),
           const _AbnormalItem(
-            dot: HealthPage._dotRed,
+            dotAsset: 'assets/images/icon/lb-ico.png',
             title: '进食量降低',
             tag: _Tag('已恢复', bg: HealthPage._goodBg, ink: HealthPage._goodInk),
             body: '8月2日进食仅28g，远低于日均58g，持续1天已恢复。',
@@ -768,7 +781,7 @@ class _AbnormalCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           const _AbnormalItem(
-            dot: HealthPage._warnInk,
+            dotAsset: 'assets/images/icon/lb-ico.png',
             title: '饮水离线',
             tag: _Tag('待处理', bg: HealthPage._warnBg, ink: HealthPage._warnInk),
             body: '智能饮水机离线24小时，期间无饮水数据，设备数据持续异常，需人工处理。',
@@ -805,13 +818,13 @@ class _AbnormalCard extends StatelessWidget {
 
 /// 异常条目：彩点 + 标题/状态标签 + 正文 + 日期。
 class _AbnormalItem extends StatelessWidget {
-  final Color dot;
+  final String dotAsset; // 前置图标资源路径（替换原来的彩色圆点）
   final String title;
   final _Tag tag;
   final String body;
   final String date;
   const _AbnormalItem({
-    required this.dot,
+    required this.dotAsset,
     required this.title,
     required this.tag,
     required this.body,
@@ -825,11 +838,7 @@ class _AbnormalItem extends StatelessWidget {
       children: [
         Row(
           children: [
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: dot),
-            ),
+            Image.asset(dotAsset, width: 16, height: 16),
             const SizedBox(width: 6),
             Text(title,
                 style: const TextStyle(
@@ -843,10 +852,10 @@ class _AbnormalItem extends StatelessWidget {
         const SizedBox(height: 6),
         Text(body,
             style: const TextStyle(
-                fontSize: 11, height: 1.5, color: HealthPage._sub)),
+                fontSize: 12, height: 1.5, color: HealthPage._sub)),
         const SizedBox(height: 4),
         Text(date,
-            style: const TextStyle(fontSize: 10, color: HealthPage._sub)),
+            style: const TextStyle(fontSize: 11, color: HealthPage._sub)),
       ],
     );
   }
@@ -865,21 +874,21 @@ class _CareCard extends StatelessWidget {
           const _CardHeader(title: '护理提醒', action: '全部'),
           const SizedBox(height: 12),
           const _CareRow(
-            icon: Icons.vaccines,
+            iconAsset: 'assets/images/icon/w-1.png',
             title: '健康',
             sub: '猫三联疫苗',
             date: '2026-09-28',
           ),
           const SizedBox(height: 12),
           const _CareRow(
-            icon: Icons.cleaning_services,
+            iconAsset: 'assets/images/icon/w-2.png',
             title: '清洁',
             sub: '驱虫 Rachel',
             date: '2026-09-28',
           ),
           const SizedBox(height: 12),
           const _CareRow(
-            icon: Icons.bathtub,
+            iconAsset: 'assets/images/icon/w-3.png',
             title: '洗护',
             sub: '修剪指甲',
             date: '2026-09-28',
@@ -897,12 +906,12 @@ class _CareCard extends StatelessWidget {
 
 /// 护理提醒单行：圆底图标 + 标题/副标 + 右侧「即将过期」标签和日期。
 class _CareRow extends StatelessWidget {
-  final IconData icon;
+  final String iconAsset; // 前置图标资源路径
   final String title;
   final String sub;
   final String date;
   const _CareRow({
-    required this.icon,
+    required this.iconAsset,
     required this.title,
     required this.sub,
     required this.date,
@@ -917,10 +926,10 @@ class _CareRow extends StatelessWidget {
           height: 44,
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            color: HealthPage._iconBg,
+            color: Color(0xFFE5F3EE),
           ),
           alignment: Alignment.center,
-          child: Icon(icon, size: 22, color: HealthPage._iconInk),
+          child: Image.asset(iconAsset, width: 22, height: 22),
         ),
         const SizedBox(width: 10),
         Expanded(

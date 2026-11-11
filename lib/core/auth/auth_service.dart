@@ -139,10 +139,10 @@ class AuthService extends ChangeNotifier {
   /// Access Token 是否临近过期（默认剩余不足 5 分钟）或本地无过期信息。
   ///
   /// 用于**主动续期**：在令牌彻底失效前提前刷新，避免「令牌已过期 → 401 →
-  /// 又拿已过期令牌去刷新」的死锁（服务端 /app/token/refresh 要求刷新时
+  /// 又拿已过期令牌去刷新」的死锁（服务端 /auth/app/token/refresh 要求刷新时
   /// Authorization 头的 Access Token 仍有效）。
   static Future<bool> isAccessTokenNearExpiry({
-    Duration threshold = const Duration(minutes: 5),
+    Duration threshold = const Duration(seconds: 60),
   }) async {
     final exp = await getAccessTokenExpiresAt();
     if (exp == null) return true; // 无信息：保守起见也尝试刷新
@@ -171,7 +171,7 @@ class AuthService extends ChangeNotifier {
 
   /// 刷新 Access Token。
   ///
-  /// 后端 /app/token/refresh 的 Authorization 头要求携带 **Access Token**
+  /// 后端 /auth/app/token/refresh 的 Authorization 头要求携带 **Access Token**
   /// （若误带 Refresh Token 会返回「令牌类型错误，请使用Access Token」），
   /// 故此处用本地存储的 access_token 作为请求凭证；refresh_token 一并兜底
   /// 放入请求体（接口文档标注无参数，带上不影响，且服务端若需校验刷新令牌也能用上）。
@@ -181,7 +181,7 @@ class AuthService extends ChangeNotifier {
       debugPrint('[AuthService] refreshToken 跳过：Access Token 为空');
       return LoginResult.fail('Access Token 为空');
     }
-    final uri = Uri.parse('${ApiConfig.baseUrl}/app/token/refresh');
+    final uri = Uri.parse('${ApiConfig.baseUrl}/auth/app/token/refresh');
     // 脱敏打印 access token，确认「有没有发出去」，又不泄露完整令牌
     final mask = accessToken.length > 8
         ? '${accessToken.substring(0, 4)}…${accessToken.substring(accessToken.length - 4)}'

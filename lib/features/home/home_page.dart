@@ -9,6 +9,7 @@ import 'package:tdesign_flutter/tdesign_flutter.dart';
 
 import '../../core/pet/pet_state.dart';
 import '../../shared/widgets/pet_picker.dart';
+import 'ai_daily_detail_page.dart';
 
 /// 首页：顶部沉浸式宠物视频区（全宽、延伸到状态栏后面），
 /// 切换条叠加在视频之上；其余内容待填充。
@@ -721,7 +722,11 @@ class _AiDailyCard extends StatelessWidget {
                     const Spacer(),
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: () {}, // TODO: 跳转日报详情页
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const AiDailyDetailPage(),
+                        ),
+                      ),
                       child: const Row(
                         children: [
                           Text('详情',
@@ -1025,7 +1030,26 @@ class _AgentBlock extends StatelessWidget {
   }
 }
 
-/// 时间轴动态板块：按时间顺序展示设备/智能体的行为记录（带时间、圆点连线、缩略图）。
+/// 时间线动态数据。
+class _TimelineData {
+  final String time;
+  final String source; // 来源说明（时间行右侧灰字）
+  final String icon; // 标题行小图标资源
+  final String title;
+  final String desc;
+  final List<({String image, bool video})> media; // 缩略图（video=true 显示播放按钮/角标）
+  const _TimelineData({
+    required this.time,
+    required this.source,
+    required this.icon,
+    required this.title,
+    required this.desc,
+    this.media = const [],
+  });
+}
+
+/// 时间线动态板块：按时间顺序展示设备/智能体的行为记录
+/// （环形圆点 + 虚线时间轴；时间行/图标标题行/描述/照片与视频缩略图）。
 /// 数据当前为本地 mock，后续接入后端时间轴接口后替换即可。
 class _TimelineCard extends StatelessWidget {
   const _TimelineCard();
@@ -1035,29 +1059,33 @@ class _TimelineCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const items = [
-      (
-        time: '09:30',
-        title: '自动驱虫',
-        desc: '咕噜肉今日自动驱虫已完成，状态正常。',
-        image: null,
+      _TimelineData(
+        time: '08:30',
+        source: '来自喂食器 A',
+        icon: 'assets/images/icon/f-ico-1.png',
+        title: '自动出粮',
+        desc: '喂食器A仓自动出粮2份',
       ),
-      (
-        time: '08:15',
-        title: '喂食记录',
-        desc: '早间投喂主食 12g、零食 2g，符合今日计划。',
-        image: null,
+      _TimelineData(
+        time: '08:35',
+        source: '来自 喂食器摄像头·实时捕捉',
+        icon: 'assets/images/icon/f-ico-1.png',
+        title: '超级神虎 进食',
+        desc: '进食持续3分钟，进食量20g',
+        media: [
+          (image: 'assets/images/group-1.png', video: false),
+          (image: 'assets/images/group-1.png', video: true),
+        ],
       ),
-      (
-        time: '12:30',
-        title: '定时喝水',
-        desc: '检测到一次饮水，饮水量达标。',
-        image: null,
-      ),
-      (
-        time: '20:10',
-        title: '猫砂盆行为监测',
-        desc: '如厕行为平稳，未触发异常预警。',
-        image: null,
+      _TimelineData(
+        time: '12:10',
+        source: '来自 饮水机摄像头·实时捕捉',
+        icon: 'assets/images/icon/f-ico-1.png',
+        title: '超级神虎 饮水',
+        desc: '饮水机记录饮水约50ml',
+        media: [
+          (image: 'assets/images/group-1.png', video: true),
+        ],
       ),
     ];
 
@@ -1079,12 +1107,12 @@ class _TimelineCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 板块标题（在白色卡片内）
-          const Text('时间轴动态',
+          const Text('时间线动态',
               style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
                   color: _titleColor)),
-          const SizedBox(height: 6),
+          const SizedBox(height: 14),
           Column(
             children: [
               for (int i = 0; i < items.length; i++)
@@ -1100,14 +1128,9 @@ class _TimelineCard extends StatelessWidget {
   }
 }
 
-/// 单条时间轴节点：时间 + 圆点竖线 + 内容（可选缩略图）。
+/// 单条时间线节点：环形圆点 + 虚线 + 内容（时间行/标题行/描述/缩略图）。
 class _TimelineItem extends StatelessWidget {
-  final ({
-    String time,
-    String title,
-    String desc,
-    String? image,
-  }) data;
+  final _TimelineData data;
   final bool last;
 
   const _TimelineItem({required this.data, required this.last});
@@ -1115,73 +1138,71 @@ class _TimelineItem extends StatelessWidget {
   static const Color _theme = Color(0xFF7F6370);
   static const Color _titleColor = Color(0xFF3D2E33);
   static const Color _subColor = Color(0xFF9A8F93);
-  static const Color _line = Color(0xFFEDE6E3);
+  static const Color _line = Color(0xFFE3D9D4);
 
   @override
   Widget build(BuildContext context) {
-    return IntrinsicHeight(
+    return CustomPaint(
+      painter: _TimelineAxisPainter(
+        dotColor: _theme,
+        lineColor: _line,
+        drawLine: !last,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 时间列（右对齐，与圆点顶部对齐）
-          SizedBox(
-            width: 44,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 1),
-              child: Text(data.time,
-                  textAlign: TextAlign.right,
-                  style: const TextStyle(fontSize: 12, color: _subColor)),
-            ),
-          ),
-          const SizedBox(width: 10),
-          // 圆点 + 竖线
-          Column(
-            children: [
-              Container(
-                width: 9,
-                height: 9,
-                margin: const EdgeInsets.only(top: 4),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _theme,
-                ),
-              ),
-              if (!last)
-                Expanded(
-                  child: Container(width: 2, color: _line),
-                ),
-            ],
-          ),
-          const SizedBox(width: 12),
+          // 时间轴占位：9 圆点 + 12 间距（圆点与虚线由 painter 画在背景上）
+          const SizedBox(width: 21),
           // 内容
           Expanded(
             child: Padding(
-              padding: EdgeInsets.only(bottom: last ? 8 : 16),
+              padding: EdgeInsets.only(bottom: last ? 8 : 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(data.title,
-                      style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: _titleColor)),
-                  const SizedBox(height: 3),
+                  // 时间行：时钟图标 + 时间 + 来源
+                  Row(
+                    children: [
+                      Image.asset('assets/images/icon/time-ico.png',
+                          width: 14, height: 14),
+                      const SizedBox(width: 5),
+                      Text(data.time,
+                          style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: _titleColor)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(data.source,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 11, color: _subColor)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // 标题行：小图标 + 标题
+                  Row(
+                    children: [
+                      Image.asset(data.icon, width: 18, height: 18),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(data.title,
+                            style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: _titleColor)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
                   Text(data.desc,
                       style: const TextStyle(
-                          fontSize: 12,
-                          color: _subColor,
-                          height: 1.5)),
-                  if (data.image != null) ...[
-                    const SizedBox(height: 8),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.asset(
-                        data.image!,
-                        width: 72,
-                        height: 72,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
+                          fontSize: 12, color: _subColor, height: 1.5)),
+                  if (data.media.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    _MediaRow(media: data.media),
                   ],
                 ],
               ),
@@ -1191,4 +1212,123 @@ class _TimelineItem extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 缩略图行：每张约半宽展示，含「照片/视频」角标；视频带居中播放按钮。
+class _MediaRow extends StatelessWidget {
+  final List<({String image, bool video})> media;
+  const _MediaRow({required this.media});
+
+  static const Color _mask = Color(0x59000000); // 半透明黑蒙层
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 单张也按半宽展示（与设计稿一致），两张则并排铺满
+        final w = (constraints.maxWidth - 8) / 2;
+        return Row(
+          children: [
+            for (int i = 0; i < media.length && i < 2; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              _thumb(media[i], w),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _thumb(({String image, bool video}) m, double w) {
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child:
+              Image.asset(m.image, width: w, height: 92, fit: BoxFit.cover),
+        ),
+        if (m.video)
+          Positioned.fill(
+            child: Center(
+              child: Container(
+                width: 30,
+                height: 30,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _mask,
+                ),
+                child: Image.asset('assets/images/icon/vector-ico.png',
+                    width: 10, height: 10, fit: BoxFit.contain),
+              ),
+            ),
+          ),
+        Positioned(
+          left: 6,
+          bottom: 6,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: _mask,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(m.video ? '视频' : '照片',
+                style: const TextStyle(fontSize: 10, color: Colors.white)),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 时间轴画笔：在条目背景上绘制环形圆点与垂直虚线
+/// （包在条目最外层、尺寸由内容决定，不依赖 IntrinsicHeight/Expanded，避免布局崩溃）。
+class _TimelineAxisPainter extends CustomPainter {
+  final Color dotColor;
+  final Color lineColor;
+  final bool drawLine;
+  _TimelineAxisPainter({
+    required this.dotColor,
+    required this.lineColor,
+    required this.drawLine,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const dotR = 4.5;
+    final cx = dotR;
+    final dotCy = 5 + dotR; // 顶部留 5px 再画圆点
+    // 垂直虚线：从圆点下方一直画到条目底部（连向下一条的圆点）
+    if (drawLine) {
+      final paint = Paint()
+        ..color = lineColor
+        ..strokeWidth = 1.4
+        ..strokeCap = StrokeCap.round;
+      const dash = 3.0, gap = 3.5;
+      final startY = dotCy + dotR + 2;
+      for (double y = startY; y < size.height; y += dash + gap) {
+        canvas.drawLine(
+          Offset(cx, y),
+          Offset(cx, (y + dash).clamp(0.0, size.height)),
+          paint,
+        );
+      }
+    }
+    // 环形圆点：白底 + 主题色描边环
+    canvas.drawCircle(Offset(cx, dotCy), dotR, Paint()..color = Colors.white);
+    canvas.drawCircle(
+      Offset(cx, dotCy),
+      dotR - 0.75,
+      Paint()
+        ..color = dotColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _TimelineAxisPainter old) =>
+      old.dotColor != dotColor ||
+      old.lineColor != lineColor ||
+      old.drawLine != drawLine;
 }
