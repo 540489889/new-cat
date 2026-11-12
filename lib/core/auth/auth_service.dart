@@ -217,8 +217,13 @@ class AuthService extends ChangeNotifier {
             : const <String, dynamic>{};
         final at =
             (tokenMap['access_token'] ?? tokenMap['accessToken']) as String? ?? '';
+        // 关键修复：本后端刷新接口只返回新的 access_token、不返回 refresh_token。
+        // 若此处用空串覆盖，首次刷新成功后本地 refresh token 即被清空，
+        // 下一次刷新（如切换宠物再次触发）会因 refresh token 为空而失败并被踢登录。
+        // 故响应未返回有效 refresh_token 时，保留本地原有的 refresh token。
+        final rawRt = tokenMap['refresh_token'] ?? tokenMap['refreshToken'];
         final rt =
-            (tokenMap['refresh_token'] ?? tokenMap['refreshToken']) as String? ?? '';
+            (rawRt is String && rawRt.isNotEmpty) ? rawRt : (refreshToken ?? '');
         if (at.isNotEmpty) {
           final expiresIn =
               _toInt(tokenMap['expires_in'] ?? tokenMap['expiresIn']) ?? 1800;

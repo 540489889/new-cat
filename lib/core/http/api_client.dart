@@ -137,9 +137,11 @@ class ApiClient {
     // 这里不再以 refresh token 是否为空作为前置拦截。
     final result = await AuthService.refreshToken(refresh);
     if (result.isSuccess && (result.accessToken?.isNotEmpty ?? false)) {
+      // 防御：刷新响应未携带新 refresh_token 时，保留本地原有 refresh token，
+      // 切勿用空串覆盖（否则下一次刷新会直接失败并踢登录）。
       await AuthService.saveToken(
         accessToken: result.accessToken!,
-        refreshToken: result.refreshToken ?? '',
+        refreshToken: result.refreshToken ?? refresh ?? '',
         expiresIn: result.expiresIn ?? 1800,
       );
       return true;
