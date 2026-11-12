@@ -50,6 +50,11 @@ class ApiClient {
     Uri uri,
     Map<String, dynamic>? body,
   ) async {
+    // 已登出（令牌已失效并触发 logout）：直接短路，不再对已失效会话反复打网络/刷新，
+    // 杜绝「401 → 刷新 → 失败 → 又 401」的无限重试风暴。
+    if (!AuthService.instance.loggedIn) {
+      return ApiResponse.unauthorized('登录已过期，请重新登录');
+    }
     try {
       // 主动续期：Access Token 临近过期时先刷新再发请求，避免拿已过期令牌请求
       // → 401 → 又用已过期令牌刷新而死锁（服务端要求刷新时 Access Token 仍有效）。

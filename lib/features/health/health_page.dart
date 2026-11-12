@@ -867,6 +867,8 @@ class _CareCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 分隔线：与「今日状态」卡同款的 1px 细发丝线
+    Widget divider() => Container(height: 1, color: const Color(0x66F1EAE4));
     return _Card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -880,12 +882,16 @@ class _CareCard extends StatelessWidget {
             date: '2026-09-28',
           ),
           const SizedBox(height: 12),
+          divider(),
+          const SizedBox(height: 12),
           const _CareRow(
             iconAsset: 'assets/images/icon/w-2.png',
             title: '清洁',
             sub: '驱虫 Rachel',
             date: '2026-09-28',
           ),
+          const SizedBox(height: 12),
+          divider(),
           const SizedBox(height: 12),
           const _CareRow(
             iconAsset: 'assets/images/icon/w-3.png',

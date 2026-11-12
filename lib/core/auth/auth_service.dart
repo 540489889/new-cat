@@ -327,6 +327,10 @@ class AuthService extends ChangeNotifier {
 
   /// 退出登录（清除本地登录态）。
   Future<void> logout() async {
+    // 先同步置为未登录并通知：让 AuthGate 立即跳转登录页、
+    // 并让进行中的请求（及 PetState 等轮询）立刻短路，避免对已失效会话反复打网络。
+    _loggedIn = false;
+    notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_tokenKey);
@@ -334,8 +338,6 @@ class AuthService extends ChangeNotifier {
     } catch (_) {
       // 插件不可用（如测试环境）时忽略本地清理
     }
-    _loggedIn = false;
-    notifyListeners();
   }
 
   static Future<void> _persistToken(

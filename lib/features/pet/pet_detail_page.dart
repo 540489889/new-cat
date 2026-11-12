@@ -146,11 +146,11 @@ class _Header extends StatelessWidget {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(18),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.ios_share,
-                      size: 15, color: PetDetailPage._ink),
+                  Image.asset('assets/images/icon/share-ico.png',
+                      width: 15, height: 15),
                   SizedBox(width: 5),
                   Text('分享',
                       style: TextStyle(
@@ -188,16 +188,27 @@ class _ProfileCard extends StatelessWidget {
         ? NetworkImage(h)
         : const AssetImage('assets/images/group-1.png');
 
-    // 静态大头像（带粉色描边，与宠物页一致）
-    Widget bigAvatar(String h) => Container(
-          width: 80,
-          height: 80,
-          padding: const EdgeInsets.all(5),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: _ring, width: 2),
-          ),
-          child: CircleAvatar(backgroundImage: avatarImg(h)),
+    // 静态大头像（带粉色描边）+ 右下角相机角标（carme-ico.png，更换头像入口）
+    Widget bigAvatar(String h) => Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: _ring, width: 2),
+              ),
+              child: CircleAvatar(backgroundImage: avatarImg(h)),
+            ),
+            Positioned(
+              right: -2,
+              bottom: -2,
+              child: Image.asset('assets/images/icon/carme-ico.png',
+                  width: 26, height: 26),
+            ),
+          ],
         );
 
     // 属性行：品种/性别/年龄/绝育/体重（mock，与宠物页一致）
@@ -227,22 +238,13 @@ class _ProfileCard extends StatelessWidget {
               children: [
                 bigAvatar(head),
                 const SizedBox(height: 8),
-                // 名字 + 右箭头（视觉与宠物页一致；详情页不切换宠物，点击不弹选择）
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: Text(name,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: PetDetailPage._ink)),
-                    ),
-                    const Icon(Icons.chevron_right,
-                        size: 18, color: PetDetailPage._ink),
-                  ],
-                ),
+                // 名字（详情页不切换宠物，无右箭头）
+                Text(name,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: PetDetailPage._ink)),
                 const SizedBox(height: 4),
                 Text('和$name的第108天',
                     style: const TextStyle(
@@ -382,20 +384,27 @@ class _PortraitCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           // 2×2 网格（手动布局，避免 GridView 嵌滚动容器测高不准）
-          Row(
-            children: [
-              Expanded(child: _PersonaTile(data: _personas[0])),
-              const SizedBox(width: 10),
-              Expanded(child: _PersonaTile(data: _personas[1])),
-            ],
+          // IntrinsicHeight 让同行的两个格子按内部最高者等高，且不触发无限高度
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: _PersonaTile(data: _personas[0])),
+                const SizedBox(width: 10),
+                Expanded(child: _PersonaTile(data: _personas[1])),
+              ],
+            ),
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(child: _PersonaTile(data: _personas[2])),
-              const SizedBox(width: 10),
-              Expanded(child: _PersonaTile(data: _personas[3])),
-            ],
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: _PersonaTile(data: _personas[2])),
+                const SizedBox(width: 10),
+                Expanded(child: _PersonaTile(data: _personas[3])),
+              ],
+            ),
           ),
           const SizedBox(height: 10),
           // 通栏标签

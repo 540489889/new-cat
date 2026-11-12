@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/pet/pet_state.dart';
-import '../../shared/widgets/pet_picker.dart';
 
 /// 宠物页：宠物档案卡 + 功能入口宫格 + 今日冒险日记 + 今日集锦 + AI 问答浮条。
 /// UI 按设计稿 1:1 还原；数据当前为本地 mock，接入后端后替换即可。
@@ -330,10 +329,11 @@ class _PetProfileCardState extends State<_PetProfileCard> {
               children: [
                 avatarWidget,
                 const SizedBox(height: 8),
-                // 名字 + 右箭头（点击弹出宠物选择）
+                // 名字 + 右箭头（点击进入宠物详情）
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () => showPetPicker(context, petState),
+                  onTap: () =>
+                      Navigator.of(context).pushNamed('/pet/detail'),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -356,16 +356,9 @@ class _PetProfileCardState extends State<_PetProfileCard> {
                   behavior: HitTestBehavior.opaque,
                   onTap: () =>
                       Navigator.of(context).pushNamed('/pet/detail'),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('和$name的第108天',
-                          style: const TextStyle(
-                              fontSize: 13, color: PetPage._sub)),
-                      const Icon(Icons.chevron_right,
-                          size: 14, color: PetPage._sub),
-                    ],
-                  ),
+                  child: Text('和$name的第108天',
+                      style: const TextStyle(
+                          fontSize: 13, color: PetPage._sub)),
                 ),
                 const SizedBox(height: 16),
                 // 属性行：品种/性别/年龄/绝育/体重，均匀分布
