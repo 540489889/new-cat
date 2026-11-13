@@ -1,5 +1,8 @@
-# Codemagic 配置：Flutter iOS 打包（Release + 自动签名 → 产出可安装 ipa）
-# 在 Codemagic 网页 “Settings → Code signing” 填入下列环境变量/密钥后即可一键构建。
+# Codemagic 配置：Flutter iOS 打包（Release + 手动签名 → 产出可安装 ipa）
+# 证书/描述文件请在 Codemagic 网页 “Settings → Code signing → iOS code signing → Manual” 上传：
+#   - 证书：655dc3cc926a42308f72f0852658333e.p12（密码 zhichuang）
+#   - 描述文件：zhichuangdev.mobileprovision（development 类型，Bundle ID = pet.jolipaw.app）
+# 并在 “Environment variables” 设 CERTIFICATE_PASSWORD = zhichuang（勾选 Secure）
 workflows:
   ios-release:
     name: iOS Release IPA
@@ -8,22 +11,18 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
-      vars:
-        # ↓↓↓ 在 Codemagic 网页的 Environment variables 里设置（务必勾选 “Secure”）↓↓↓
-        APP_STORE_CONNECT_ISSUER_ID: "" # App Store Connect 的 Issuer ID
-        APP_STORE_CONNECT_KEY_IDENTIFIER: "" # API Key ID（如 2X9R4HXF34）
-        APP_STORE_CONNECT_PRIVATE_KEY: "" # .p8 文件的完整内容
-        CERTIFICATE_PRIVATE_KEY: "" # 分发证书对应的 .p12 私钥（导出时设置的密码，可留空若未设密码）
-        # ↑↑↑
       ios_signing:
-        distribution_type: ad_hoc # Ad Hoc 分发：装到已注册 UDID 的设备，有效期约 1 年
-        bundle_identifier: pet.jolipaw.app
+        distribution_type: development # 描述文件为 development 类型（含已注册设备列表）
+        provisioning_profiles:
+          - zhichuangdev.mobileprovision
+        certificates:
+          - 655dc3cc926a42308f72f0852658333e.p12
     scripts:
       - name: Flutter 依赖
         script: flutter pub get
       - name: CocoaPods
         script: cd ios && pod install && cd ..
-      - name: 构建 IPA（Release + 自动签名）
+      - name: 构建 IPA（Release + 手动签名）
         script: |
           flutter build ipa --release \
             --export-options-plist=$FCI_EXPORT_OPTIONS_FILE
