@@ -82,6 +82,11 @@ class AuthService extends ChangeNotifier {
   static const String _tokenKey = 'access_token';
   static const String _refreshTokenKey = 'refresh_token';
 
+  /// 本地会话标记：一键登录 mock（无运营商 SDK、拿不到服务端令牌）用它保存
+  /// 「已登录」状态，使冷启动能恢复，避免每次打开都要重新登录。
+  /// 接入真实一键登录后，改回由 access_token 判定即可。
+  static const String _sessionKey = 'local_logged_in';
+
   static Map<String, String> get _jsonHeaders =>
       {'Content-Type': 'application/json; charset=utf-8'};
 
@@ -93,17 +98,36 @@ class AuthService extends ChangeNotifier {
   /// 一键登录页展示的脱敏手机号，真实场景由运营商 SDK 返回。
   String get maskedPhone => '182****3210';
 
-  /// 应用启动时恢复本地登录态。
-  static Future<void> restore() async {
+  /// 单例恢复 Future：保证 main 与 AuthGate 可重复安全等待同一次恢复。
+  static Future<bool>? _restoreFuture;
+
+  /// 应用启动时恢复本地登录态，返回是否处于登录态。
+  ///
+  /// 参考 f-cat 的 `checkLoginStatus()`：恢复必须可 await，且完成后要
+  /// `notifyListeners()` 通知 AuthGate 重建，否则首帧渲染登录页后永不刷新。
+  static Future<bool> restore() {
+    final running = _restoreFuture;
+    if (running != null) return running;
+    final future = _doRestore();
+    _restoreFuture = future;
+    return future;
+  }
+
+  static Future<bool> _doRestore() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString(_tokenKey);
-      if (token != null && token.isNotEmpty) {
-        instance._loggedIn = true;
-      }
+      final hasLocalSession = prefs.getBool(_sessionKey) ?? false;
+      // 有真实凭据或本地演示会话即恢复登录态；过期由 ApiClient 在请求前
+      // 主动续期处理，不在启动阶段做网络刷新，避免冷启动因网络抖动被误判掉线。
+      instance._loggedIn =
+          (token != null && token.isNotEmpty) || hasLocalSession;
     } catch (_) {
-      // 插件不可用（如测试环境）时忽略
+      // 插件不可用（如测试环境）时保持未登录
+      instance._loggedIn = false;
     }
+    instance.notifyListeners();
+    return instance._loggedIn;
   }
 
   /// 读取本地存储的 Access Token（供 ApiClient 自动附带）。
@@ -136,16 +160,20 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  /// Access Token 是否临近过期（默认剩余不足 5 分钟）或本地无过期信息。
+  /// Access Token 是否临近过期（剩余不足 60 秒）。
   ///
-  /// 用于**主动续期**：在令牌彻底失效前提前刷新，避免「令牌已过期 → 401 →
-  /// 又拿已过期令牌去刷新」的死锁（服务端 /auth/app/token/refresh 要求刷新时
-  /// Authorization 头的 Access Token 仍有效）。
+  /// 用于**主动续期**：在令牌彻底失效前提前刷新，减少「过期请求 → 401 →
+  /// 刷新 → 重试」的一次往返。刷新凭证是 Refresh Token（对齐参考项目），
+  /// 因此不受当前 Access Token 是否已过期影响。
+  ///
+  /// 本地无过期信息时返回 false（与 f-cat 的 `_ensureValidToken` 一致）：
+  /// 这常见于一键登录 mock 会话，此时没有令牌可刷新，若返回 true 会让
+  /// 每个请求都白跑一次必定失败的刷新，反而拖慢并污染日志。
   static Future<bool> isAccessTokenNearExpiry({
     Duration threshold = const Duration(seconds: 60),
   }) async {
     final exp = await getAccessTokenExpiresAt();
-    if (exp == null) return true; // 无信息：保守起见也尝试刷新
+    if (exp == null) return false;
     final remaining = exp - DateTime.now().millisecondsSinceEpoch;
     return remaining <= threshold.inMilliseconds;
   }
@@ -171,20 +199,18 @@ class AuthService extends ChangeNotifier {
 
   /// 刷新 Access Token。
   ///
-  /// 后端 /auth/app/token/refresh 的 Authorization 头要求携带 **Access Token**
-  /// （若误带 Refresh Token 会返回「令牌类型错误，请使用Access Token」），
-  /// 故此处用本地存储的 access_token 作为请求凭证；refresh_token 一并兜底
-  /// 放入请求体（接口文档标注无参数，带上不影响，且服务端若需校验刷新令牌也能用上）。
+  /// 以参考项目 f-cat 为准：后端 /auth/app/token/refresh 的 Authorization 头
+  /// 携带 **Refresh Token**（`Bearer $refreshToken`），且不带请求体。
+  /// 这样刷新不依赖 Access Token 是否仍有效，Access Token 过期后也能续期。
   static Future<LoginResult> refreshToken(String? refreshToken) async {
-    final accessToken = await getAccessToken();
-    if (accessToken == null || accessToken.isEmpty) {
-      debugPrint('[AuthService] refreshToken 跳过：Access Token 为空');
-      return LoginResult.fail('Access Token 为空');
+    if (refreshToken == null || refreshToken.isEmpty) {
+      debugPrint('[AuthService] refreshToken 跳过：Refresh Token 为空');
+      return LoginResult.fail('Refresh Token 为空');
     }
     final uri = Uri.parse('${ApiConfig.baseUrl}/auth/app/token/refresh');
-    // 脱敏打印 access token，确认「有没有发出去」，又不泄露完整令牌
-    final mask = accessToken.length > 8
-        ? '${accessToken.substring(0, 4)}…${accessToken.substring(accessToken.length - 4)}'
+    // 脱敏打印 refresh token，确认凭证已发出又不泄露完整令牌
+    final mask = refreshToken.length > 8
+        ? '${refreshToken.substring(0, 4)}…${refreshToken.substring(refreshToken.length - 4)}'
         : '***';
     debugPrint(
       '[AuthService] refreshToken 请求 url=$uri Authorization=Bearer $mask',
@@ -194,19 +220,11 @@ class AuthService extends ChangeNotifier {
       response = await http
           .post(
             uri,
-            headers: {
-              'Authorization': 'Bearer $accessToken',
-              'Content-Type': 'application/json; charset=utf-8',
-            },
-            body: refreshToken != null && refreshToken.isNotEmpty
-                ? jsonEncode({'refreshToken': refreshToken})
-                : null,
+            headers: {'Authorization': 'Bearer $refreshToken'},
           )
           .timeout(const Duration(seconds: ApiConfig.connectTimeout));
       final body = jsonDecode(response.body) as Map<String, dynamic>;
-      // 接口文档显示该接口响应 schema 为 {warn, success, error, msg, ...}，
-      // 与登录接口的 {code:200} 包装不同，故兼容两种成功判定：
-      // code==200 或 success==true，任一命中即视为刷新成功。
+      // 参考项目以 code==200 判定成功；保留 success==true 兼容不同响应包装。
       final successOk = response.statusCode == 200 &&
           (_isSuccess(body['code']) || body['success'] == true);
       if (successOk) {
@@ -223,7 +241,7 @@ class AuthService extends ChangeNotifier {
         // 故响应未返回有效 refresh_token 时，保留本地原有的 refresh token。
         final rawRt = tokenMap['refresh_token'] ?? tokenMap['refreshToken'];
         final rt =
-            (rawRt is String && rawRt.isNotEmpty) ? rawRt : (refreshToken ?? '');
+            (rawRt is String && rawRt.isNotEmpty) ? rawRt : refreshToken;
         if (at.isNotEmpty) {
           final expiresIn =
               _toInt(tokenMap['expires_in'] ?? tokenMap['expiresIn']) ?? 1800;
@@ -325,7 +343,16 @@ class AuthService extends ChangeNotifier {
   }
 
   /// 本机号码一键登录（当前为 mock，接入 AliAuth 后替换为真实 token 校验）。
+  ///
+  /// 因拿不到服务端令牌，这里持久化本地会话标记，保证冷启动能恢复登录态，
+  /// 否则用户每次打开 App 都被要求重新登录。
   Future<void> loginWithOneClick() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_sessionKey, true);
+    } catch (_) {
+      // 插件不可用时仅保留内存态
+    }
     _loggedIn = true;
     notifyListeners();
   }
@@ -340,6 +367,8 @@ class AuthService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_tokenKey);
       await prefs.remove(_refreshTokenKey);
+      await prefs.remove('${_tokenKey}_expires_at');
+      await prefs.remove(_sessionKey);
     } catch (_) {
       // 插件不可用（如测试环境）时忽略本地清理
     }

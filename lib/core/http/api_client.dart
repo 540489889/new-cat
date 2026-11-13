@@ -56,8 +56,8 @@ class ApiClient {
       return ApiResponse.unauthorized('登录已过期，请重新登录');
     }
     try {
-      // 主动续期：Access Token 临近过期时先刷新再发请求，避免拿已过期令牌请求
-      // → 401 → 又用已过期令牌刷新而死锁（服务端要求刷新时 Access Token 仍有效）。
+      // 主动续期：Access Token 临近过期时先刷新再发请求，减少 401 往返。
+      // 刷新凭证为 Refresh Token（对齐参考项目），不依赖当前 Access Token 有效性。
       final current = await AuthService.getAccessToken();
       if (current != null &&
           current.isNotEmpty &&
@@ -73,11 +73,12 @@ class ApiClient {
       final response = await _send(method, uri, headers, bodyStr);
       final parsed = _parseResponse(response);
 
-      // 令牌失效：HTTP 401，或后端在 200 体内返回业务码 401/403（令牌过期）。
-      // 两种情况都走「刷新后重试一次」，刷新失败再强制回登录页。
-      final isTokenInvalid = response.statusCode == 401 ||
-          parsed.code == 401 ||
-          parsed.code == 403;
+      // 令牌失效：HTTP 401，或后端在 200 体内返回业务码 401。
+      // 注意：不要涵盖 403 —— 业务上的「无权限/未开通/风控拒绝」也会用 403，
+      // 一律当成令牌失效会误触发刷新，刷新失败就把用户踢回登录页（参考 f-cat
+      // 只认 HTTP 401，完全没有 403 判断）。
+      final isTokenInvalid =
+          response.statusCode == 401 || parsed.code == 401;
       if (isTokenInvalid) {
         print(
           '[ApiClient] 检测到令牌失效 status=${response.statusCode} '
@@ -133,8 +134,8 @@ class ApiClient {
 
   Future<bool> _doRefresh() async {
     final refresh = await AuthService.getRefreshToken();
-    // 刷新凭证改为 access token（由 refreshToken 内部从本地读取），
-    // 这里不再以 refresh token 是否为空作为前置拦截。
+    // 以 Refresh Token 作为刷新凭证（参考项目 f-cat 的契约）；
+    // 为空时 refreshToken 内部会直接返回失败，无需在此重复拦截。
     final result = await AuthService.refreshToken(refresh);
     if (result.isSuccess && (result.accessToken?.isNotEmpty ?? false)) {
       // 防御：刷新响应未携带新 refresh_token 时，保留本地原有 refresh token，
@@ -149,11 +150,22 @@ class ApiClient {
     return false;
   }
 
-  /// 会话失效（401 且刷新失败）：仅在仍登录态时触发一次回登录页，
-  /// 避免并发请求重复触发。
+  /// 会话失效（401 且刷新失败）：仅「真实令牌会话」才回登录页。
+  ///
+  /// 一键登录当前是 mock，本地没有 access/refresh token，请求必然拿不到
+  /// Authorization 而返回 401；若此时强制 logout，用户一登录进来就被踢回
+  /// 登录页，表现为「老是需要重新登录」。故无本地令牌时只让本次请求失败，
+  /// 不做全局登出；真实登录（有令牌）且刷新彻底失败才登出。
   void _onSessionExpired() {
+    if (!AuthService.instance.loggedIn) return;
+    unawaited(_logoutIfHasToken());
+  }
+
+  Future<void> _logoutIfHasToken() async {
+    final token = await AuthService.getAccessToken();
+    if (token == null || token.isEmpty) return;
     if (AuthService.instance.loggedIn) {
-      unawaited(AuthService.instance.logout());
+      await AuthService.instance.logout();
     }
   }
 

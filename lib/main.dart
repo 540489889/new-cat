@@ -5,10 +5,10 @@ import 'package:tdesign_flutter/tdesign_flutter.dart';
 import 'app.dart';
 import 'core/auth/auth_service.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // 恢复本地登录态（若有）
-  AuthService.restore();
+  // 必须 await：确保首帧渲染前登录态已从本地恢复，避免闪登录页
+  await AuthService.restore();
   // media_kit 需要在使用 Player 前初始化；测试或不支持的平台静默忽略
   try {
     MediaKit.ensureInitialized();
