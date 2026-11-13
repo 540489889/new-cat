@@ -1,0 +1,35 @@
+# Codemagic 配置：Flutter iOS 打包（Release + 自动签名 → 产出可安装 ipa）
+# 在 Codemagic 网页 “Settings → Code signing” 填入下列环境变量/密钥后即可一键构建。
+workflows:
+  ios-release:
+    name: iOS Release IPA
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      vars:
+        # ↓↓↓ 在 Codemagic 网页的 Environment variables 里设置（务必勾选 “Secure”）↓↓↓
+        APP_STORE_CONNECT_ISSUER_ID: "" # App Store Connect 的 Issuer ID
+        APP_STORE_CONNECT_KEY_IDENTIFIER: "" # API Key ID（如 2X9R4HXF34）
+        APP_STORE_CONNECT_PRIVATE_KEY: "" # .p8 文件的完整内容
+        CERTIFICATE_PRIVATE_KEY: "" # 分发证书对应的 .p12 私钥（导出时设置的密码，可留空若未设密码）
+        # ↑↑↑
+      ios_signing:
+        distribution_type: ad_hoc # Ad Hoc 分发：装到已注册 UDID 的设备，有效期约 1 年
+        bundle_identifier: pet.jolipaw.app
+    scripts:
+      - name: Flutter 依赖
+        script: flutter pub get
+      - name: CocoaPods
+        script: cd ios && pod install && cd ..
+      - name: 构建 IPA（Release + 自动签名）
+        script: |
+          flutter build ipa --release \
+            --export-options-plist=$FCI_EXPORT_OPTIONS_FILE
+    artifacts:
+      - build/ios/ipa/*.ipa # 构建产物 ipa，Codemagic 会提供下载/安装链接
+    publishing:
+      email:
+        recipients:
+          - "" # 可填你的邮箱，构建完成通知
