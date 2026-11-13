@@ -38,6 +38,13 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    // 设备自带底部安全区（iPhone Home Indicator 约 34px）已由 SafeArea 处理。
+    // 有安全区时不再叠加自写间距，否则胶囊下方会出现 34 + 12 = 46px 的过大空隙；
+    // 无安全区的设备（如部分 Android）仍保留 12px 悬浮留白。
+    final hasSystemBottomInset =
+        MediaQuery.of(context).viewPadding.bottom > 0;
+    final extraBottomGap = hasSystemBottomInset ? 0.0 : 12.0;
+
     return StatusBarStyle(
       child: Scaffold(
         // 让页面内容延伸到悬浮胶囊下方，胶囊左右空隙透出的是页面内容而非纯色背景
@@ -47,16 +54,10 @@ class _MainShellState extends State<MainShell> {
           top: false,
           bottom: true,
           child: Padding(
-            // 悬浮胶囊：左右 16、离底 12，浮于页面内容之上
-            // 仅留底部 12 间隙；左右不内缩 → 磨砂层铺到屏幕边，使左右间隙也磨砂
-            // 外层固定 76 高（磨砂带高度），避免 SizedBox.expand 在 bottomNavigationBar
-            // 约束下被撑成无限高而遮挡全屏
-            // 栏体落到安全区底部、与屏幕底齐平；磨砂带上下内缩留磨砂边
-            // 实心胶囊 TabBar：不透明纯白背景 + 阴影遮挡内容，不再做毛玻璃
-            // 离底 12 悬浮间距（SafeArea 已处理系统栏，这里只是视觉留白）
-            padding: const EdgeInsets.only(bottom: 12),
+            // 悬浮胶囊：左右内缩 20、栏体高 64，浮于页面内容之上
+            padding: EdgeInsets.only(bottom: extraBottomGap),
             child: SizedBox(
-              height: 64, // 栏体实白 + 阴影遮挡，顶部无需内缩
+              height: 64,
               child: Stack(
                 children: [
                   // 左右内缩 20、贴顶（去掉顶部内间距），自身不透明纯白遮挡背后内容
