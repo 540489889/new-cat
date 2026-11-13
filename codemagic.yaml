@@ -28,7 +28,3 @@ workflows:
             --export-options-plist=$FCI_EXPORT_OPTIONS_FILE
     artifacts:
       - build/ios/ipa/*.ipa # 构建产物 ipa，Codemagic 会提供下载/安装链接
-    publishing:
-      email:
-        recipients:
-          - "" # 可填你的邮箱，构建完成通知
