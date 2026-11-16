@@ -18,6 +18,13 @@ class _AppState extends State<App> {
   final ThemeController _themeController = ThemeController();
 
   @override
+  void initState() {
+    super.initState();
+    // 恢复上次选择的外观模式（设置页可切换并持久化）
+    _themeController.restore();
+  }
+
+  @override
   void dispose() {
     _themeController.dispose();
     super.dispose();

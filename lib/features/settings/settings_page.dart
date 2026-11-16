@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/router/app_router.dart';
+
 /// 「我的」页：按设计稿 1:1 还原。
 /// 结构：设置入口 → 用户信息 → 会员权益横幅 → 商城 → 我的设备 → 家庭成员 → 通用列表。
 /// 数据当前为本地 mock，接入后端后替换即可。
@@ -44,7 +46,8 @@ class SettingsPage extends StatelessWidget {
               child: Align(
                 alignment: Alignment.centerRight,
                 child: GestureDetector(
-                  onTap: () {}, // TODO: 跳转设置页
+                  onTap: () =>
+                      Navigator.of(context).pushNamed(AppRoutes.settings),
                   child: const Icon(Icons.settings_outlined,
                       size: 22, color: _ink),
                 ),
