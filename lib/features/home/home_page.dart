@@ -21,28 +21,24 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  /// 顶部宠物切换条高度（不含状态栏）：昵称行 + 问候语 + 上下留白，实测 66。
+  /// 滚动内容盒子从这里开始，切换条不会被内容遮挡
+  static const double _switchBarHeight = 66;
+
   /// 视频底色驱动的页面背景色；初始给一个暖灰底色，避免首屏白闪，
   /// 待封面/视频取色后更新为视频真实底色。
   Color? _bgColor = const Color(0xFFEFE9E6);
   final ScrollController _scrollCtrl = ScrollController();
-  double _scrollOffset = 0;
 
   @override
   void initState() {
     super.initState();
-    _scrollCtrl.addListener(_onScroll);
     // 登录后加载宠物列表与顶部展示视频
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final petState = context.read<PetState>();
       if (!petState.isLoaded) petState.loadPets();
     });
-  }
-
-  void _onScroll() {
-    if (!mounted) return;
-    final o = _scrollCtrl.offset;
-    if ((o - _scrollOffset).abs() > 1) setState(() => _scrollOffset = o);
   }
 
   @override
@@ -78,15 +74,23 @@ class _HomePageState extends State<HomePage> {
               onColorExtracted: (c) => setState(() => _bgColor = c),
             ),
           ),
-          // 内容层：在视频之上滚动；首张卡片默认上压视频底部 20px（重叠而非留缝），
-          // 让视频与内容在视觉上连成一片、更好融入。
-          Positioned.fill(
+          // 滚动内容盒子：高度 = 一屏 − 状态栏 − 顶部切换条（与健康页同一结构），
+          // 内容只在盒子内滚动，越过盒子上边界的部分被 ScrollView 自身裁剪，
+          // 因此永远不会遮挡状态栏 / 宠物切换条
+          Positioned(
+            top: topInset + _switchBarHeight,
+            left: 0,
+            right: 0,
+            bottom: 0,
             child: CustomScrollView(
               controller: _scrollCtrl,
               slivers: [
-                // 顶部透明区：高度为 视频高 - 20，使首张卡片叠到视频底部 20px
+                // 顶部透明区：盒子内留白，使首张卡片仍叠到视频底部 20px
                 SliverToBoxAdapter(
-                  child: Container(height: videoBandH - 20),
+                  child: Container(
+                    height: (videoBandH - 20 - topInset - _switchBarHeight)
+                        .clamp(0.0, double.infinity),
+                  ),
                 ),
                 // 内容：仅卡片本身（各自白底 + 阴影），无整块面板背景，
                 // 卡片直接浮在视频之上，让视频完整透出、更好地融入
@@ -119,7 +123,6 @@ class _HomePageState extends State<HomePage> {
             left: 0,
             right: 0,
             child: _PetSwitchBar(
-              scrollOffset: _scrollOffset,
               topInset: topInset,
               // 淡入底色用半透明白，与内容面板统一（视频始终透出）
               bgColor: Colors.white.withValues(alpha: 0.9),
@@ -264,7 +267,11 @@ class _HeroVideoState extends State<_HeroVideo> with WidgetsBindingObserver {
       final image = frame.image;
       final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
       if (data == null || !mounted) return;
-      final color = _averageBottom(data.buffer.asUint32List(), image.width, image.height);
+      final color = _averageBottom(
+        data.buffer.asUint32List(),
+        image.width,
+        image.height,
+      );
       if (color != null) widget.onColorExtracted?.call(color);
     } catch (e) {
       debugPrint('[HeroVideo] extractColor error: $e');
@@ -293,7 +300,11 @@ class _HeroVideoState extends State<_HeroVideo> with WidgetsBindingObserver {
       if (!mounted) return;
       final data = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
       if (data == null || !mounted) return;
-      final color = _averageBottom(data.buffer.asUint32List(), img.width, img.height);
+      final color = _averageBottom(
+        data.buffer.asUint32List(),
+        img.width,
+        img.height,
+      );
       if (color != null) widget.onColorExtracted?.call(color);
     } catch (e) {
       debugPrint('[HeroVideo] extractColorFromImage error: $e');
@@ -323,17 +334,18 @@ class _HeroVideoState extends State<_HeroVideo> with WidgetsBindingObserver {
       _player!
           .open(Media(url))
           .then((_) {
-        debugPrint('[HeroVideo] open ok, play');
-        _updateAspect();
-        _extractColor();
-        _player!.play();
-      }).catchError((e) {
-      // 播放失败：退回封面图
-      debugPrint('[HeroVideo] open error: $e');
-      if (mounted) setState(() => _ready = false);
-      });
-      }
-      }
+            debugPrint('[HeroVideo] open ok, play');
+            _updateAspect();
+            _extractColor();
+            _player!.play();
+          })
+          .catchError((e) {
+            // 播放失败：退回封面图
+            debugPrint('[HeroVideo] open error: $e');
+            if (mounted) setState(() => _ready = false);
+          });
+    }
+  }
 
   @override
   void dispose() {
@@ -395,82 +407,76 @@ class _HeroVideoState extends State<_HeroVideo> with WidgetsBindingObserver {
         child: ClipRRect(
           child: Stack(
             fit: StackFit.expand,
-          children: [
-            // 封面：优先接口返回的 imgUrl（网络图），否则本地兜底图
-            AnimatedOpacity(
-              opacity: showVideo ? 0.0 : 1.0,
-              duration: const Duration(milliseconds: 500),
-              child: pet.coverUrl != null && pet.coverUrl!.isNotEmpty
-                  ? Image.network(
-                      pet.coverUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => Image.asset(
+            children: [
+              // 封面：优先接口返回的 imgUrl（网络图），否则本地兜底图
+              AnimatedOpacity(
+                opacity: showVideo ? 0.0 : 1.0,
+                duration: const Duration(milliseconds: 500),
+                child: pet.coverUrl != null && pet.coverUrl!.isNotEmpty
+                    ? Image.network(
+                        pet.coverUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Image.asset(
+                          'assets/images/group-1.png',
+                          fit: BoxFit.cover,
+                        ),
+                      )
+                    : Image.asset(
                         'assets/images/group-1.png',
                         fit: BoxFit.cover,
                       ),
-                    )
-                  : Image.asset(
-                      'assets/images/group-1.png',
+              ),
+              // 视频就绪后直接播放（淡入覆盖在封面之上，封面随即淡出）
+              if (controller != null)
+                AnimatedOpacity(
+                  opacity: showVideo ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 500),
+                  child: AbsorbPointer(
+                    child: Video(
+                      controller: controller,
                       fit: BoxFit.cover,
+                      controls: null,
+                      wakelock: false,
                     ),
-            ),
-            // 视频就绪后直接播放（淡入覆盖在封面之上，封面随即淡出）
-            if (controller != null)
-              AnimatedOpacity(
-                opacity: showVideo ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 500),
-                child: AbsorbPointer(
-                  child: Video(
-                    controller: controller,
-                    fit: BoxFit.cover,
-                    controls: null,
-                    wakelock: false,
                   ),
                 ),
-              ),
-            // 顶部渐变遮罩：自上而下的白色薄雾，衬托黑色标题文字
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: topInset + 96,
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.white.withValues(alpha: 0.55),
-                        Colors.white.withValues(alpha: 0.25),
-                        Colors.transparent,
-                      ],
+              // 顶部渐变遮罩：自上而下的白色薄雾，衬托黑色标题文字
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: topInset + 96,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.white.withValues(alpha: 0.55),
+                          Colors.white.withValues(alpha: 0.25),
+                          Colors.transparent,
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
-
 }
 
 /// 顶部固定切换条：始终悬浮在页面顶部，不随滚动移动，滚动后仍可点按切换宠物。
 /// 顶部（视频区）背景透明、不遮挡视频；向下滚动后背景渐显为页面底色，
 /// 形成分隔，避免压住下方卡片文字。
 class _PetSwitchBar extends StatelessWidget {
-  final double scrollOffset;
   final double topInset;
   final Color bgColor;
-  const _PetSwitchBar({
-    required this.scrollOffset,
-    required this.topInset,
-    required this.bgColor,
-  });
+  const _PetSwitchBar({required this.topInset, required this.bgColor});
 
   @override
   Widget build(BuildContext context) {
@@ -479,9 +485,6 @@ class _PetSwitchBar extends StatelessWidget {
     final name = pet.selectedPet?.nickname.isNotEmpty == true
         ? pet.selectedPet!.nickname
         : '超级喵克，哎喵';
-    // contentOpacity：宠物切换内容（昵称 / 切换图标 / 问候语）随滚动上移而渐隐，
-    // 让「视频上的切换宠物」平滑隐藏，而不是一直浮在内容之上。
-    final contentOpacity = (1 - scrollOffset / 120).clamp(0, 1).toDouble();
     return Container(
       width: double.infinity,
       padding: EdgeInsets.only(
@@ -490,51 +493,42 @@ class _PetSwitchBar extends StatelessWidget {
         right: 16,
         bottom: 10,
       ),
-      child: Opacity(
-        opacity: contentOpacity,
-        child: IgnorePointer(
-          ignoring: contentOpacity < 0.05,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 仅这一行可点按弹窗，避免整块拦截下方内容的手势
-              GestureDetector(
-                onTap: () => showPetPicker(context, pet),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        name,
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 仅这一行可点按弹窗，避免整块拦截下方内容的手势
+          GestureDetector(
+            onTap: () => showPetPicker(context, pet),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    name,
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
                     ),
-                    const SizedBox(width: 4),
-                    const Image(
-                      image: AssetImage('assets/images/icon/swich-1.png'),
-                      width: 10,
-                      height: 10,
-                      color: Color(0xFF7F6370),
-                    ),
-                  ],
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-              ),
-              SizedBox(height: token.spacer / 2),
-              Text(
-                '铲屎官，早上好呀~',
-                style: TextStyle(
-                  color: Colors.black87,
-                  fontSize: 13,
+                const SizedBox(width: 4),
+                const Image(
+                  image: AssetImage('assets/images/icon/swich-1.png'),
+                  width: 10,
+                  height: 10,
+                  color: Color(0xFF7F6370),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+          SizedBox(height: token.spacer / 2),
+          Text(
+            '铲屎官，早上好呀~',
+            style: TextStyle(color: Colors.black87, fontSize: 13),
+          ),
+        ],
       ),
     );
   }
@@ -569,8 +563,10 @@ class _AiBar extends StatelessWidget {
           const Icon(Icons.auto_awesome, size: 18, color: _brand),
           const SizedBox(width: 8),
           const Expanded(
-            child: Text('有什么问题都可以问我~',
-                style: TextStyle(fontSize: 13, color: _sub)),
+            child: Text(
+              '有什么问题都可以问我~',
+              style: TextStyle(fontSize: 13, color: _sub),
+            ),
           ),
           Image.asset(
             'assets/images/icon/voice-ico.png',
@@ -648,14 +644,19 @@ class _AiDailyCard extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const Text('AI日报',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white)),
+                const Text(
+                  'AI日报',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
                 const Spacer(),
-                Text(dateText,
-                    style: const TextStyle(fontSize: 12, color: Colors.white)),
+                Text(
+                  dateText,
+                  style: const TextStyle(fontSize: 12, color: Colors.white),
+                ),
               ],
             ),
           ),
@@ -694,8 +695,10 @@ class _AiDailyCard extends StatelessWidget {
                             ),
                           ),
                           SizedBox(height: 4),
-                          Text(subtitle,
-                              style: TextStyle(fontSize: 12, color: _subColor)),
+                          Text(
+                            subtitle,
+                            style: TextStyle(fontSize: 12, color: _subColor),
+                          ),
                         ],
                       ),
                     ),
@@ -709,14 +712,20 @@ class _AiDailyCard extends StatelessWidget {
                       if (i > 0) const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 5),
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
                         decoration: BoxDecoration(
                           color: _chipBg,
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: Text(tags[i],
-                            style: const TextStyle(
-                                fontSize: 11, color: Color(0xFF7F6370))),
+                        child: Text(
+                          tags[i],
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF7F6370),
+                          ),
+                        ),
                       ),
                     ],
                     const Spacer(),
@@ -729,11 +738,18 @@ class _AiDailyCard extends StatelessWidget {
                       ),
                       child: const Row(
                         children: [
-                          Text('详情',
-                              style: TextStyle(
-                                  fontSize: 12, color: Color(0xFF7F6370))),
-                          Icon(Icons.chevron_right,
-                              size: 16, color: Color(0xFF7F6370)),
+                          Text(
+                            '详情',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF7F6370),
+                            ),
+                          ),
+                          Icon(
+                            Icons.chevron_right,
+                            size: 16,
+                            color: Color(0xFF7F6370),
+                          ),
                         ],
                       ),
                     ),
@@ -779,9 +795,7 @@ class _AgentDynamicCard extends StatelessWidget {
         iconAsset: 'assets/images/icon/agent-ico-1.png',
         title: '健康守护',
         time: '10 分钟前',
-        badges: [
-          (label: '异常', fg: Color(0xFFD98A2B), bg: Color(0xFFFAEDD8)),
-        ],
+        badges: [(label: '异常', fg: Color(0xFFD98A2B), bg: Color(0xFFFAEDD8))],
         body: '检测到连续两次疑似呕吐。',
         suggestion: '结合进食中断和活动下降，建议暂停下一次自动出粮，并继续观察2小时。',
         footnote: '猫砂盆影像与喂食器数据交叉发现 · 需要你的确认',
@@ -840,11 +854,14 @@ class _AgentDynamicCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 板块标题（在白色卡片内）
-          const Text('Agent 动态',
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: _titleColor)),
+          const Text(
+            'Agent 动态',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: _titleColor,
+            ),
+          ),
           const SizedBox(height: 10),
           // 消息块：浅色圆角小卡，块间留缝
           Column(
@@ -890,8 +907,12 @@ class _AgentBlock extends StatelessWidget {
           Row(
             children: [
               data.iconAsset != null
-                  ? Image.asset(data.iconAsset!,
-                      width: 40, height: 40, fit: BoxFit.contain)
+                  ? Image.asset(
+                      data.iconAsset!,
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.contain,
+                    )
                   : Container(
                       width: 40,
                       height: 40,
@@ -908,17 +929,22 @@ class _AgentBlock extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Flexible(
-                      child: Text(data.title,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: _ink)),
+                      child: Text(
+                        data.title,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: _ink,
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 8),
-                    Text(data.time,
-                        softWrap: false,
-                        style: const TextStyle(fontSize: 12, color: _muted)),
+                    Text(
+                      data.time,
+                      softWrap: false,
+                      style: const TextStyle(fontSize: 12, color: _muted),
+                    ),
                   ],
                 ),
               ),
@@ -926,26 +952,33 @@ class _AgentBlock extends StatelessWidget {
               for (final b in data.badges) ...[
                 const SizedBox(width: 6),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: b.bg,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(b.label,
-                      style: TextStyle(fontSize: 11, color: b.fg)),
+                  child: Text(
+                    b.label,
+                    style: TextStyle(fontSize: 11, color: b.fg),
+                  ),
                 ),
               ],
             ],
           ),
           const SizedBox(height: 12),
           // 正文（字号与 AI 日报标题一致：15 / w600）
-          Text(data.body,
-              style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: _ink,
-                  height: 1.4)),
+          Text(
+            data.body,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: _ink,
+              height: 1.4,
+            ),
+          ),
           const SizedBox(height: 10),
           // 白色内嵌建议卡
           Container(
@@ -955,14 +988,21 @@ class _AgentBlock extends StatelessWidget {
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Text(data.suggestion,
-                style: const TextStyle(
-                    fontSize: 13, color: _suggestionText, height: 1.6)),
+            child: Text(
+              data.suggestion,
+              style: const TextStyle(
+                fontSize: 13,
+                color: _suggestionText,
+                height: 1.6,
+              ),
+            ),
           ),
           if (data.footnote != null) ...[
             const SizedBox(height: 10),
-            Text(data.footnote!,
-                style: const TextStyle(fontSize: 12, color: _muted)),
+            Text(
+              data.footnote!,
+              style: const TextStyle(fontSize: 12, color: _muted),
+            ),
           ],
           const SizedBox(height: 12),
           // 操作按钮：主按钮实心胶囊 + 问问AI 描边胶囊
@@ -991,11 +1031,14 @@ class _AgentBlock extends StatelessWidget {
           color: _primary,
           borderRadius: BorderRadius.circular(22),
         ),
-        child: Text(data.primary!,
-            style: const TextStyle(
-                fontSize: 14,
-                color: Colors.white,
-                fontWeight: FontWeight.w600)),
+        child: Text(
+          data.primary!,
+          style: const TextStyle(
+            fontSize: 14,
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
     );
   }
@@ -1015,14 +1058,21 @@ class _AgentBlock extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.asset('assets/images/icon/agent-ico-2.png',
-                width: 16, height: 16, fit: BoxFit.contain),
+            Image.asset(
+              'assets/images/icon/agent-ico-2.png',
+              width: 16,
+              height: 16,
+              fit: BoxFit.contain,
+            ),
             SizedBox(width: 6),
-            Text('问问AI',
-                style: TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF3A3A3A),
-                    fontWeight: FontWeight.w500)),
+            Text(
+              '问问AI',
+              style: TextStyle(
+                fontSize: 14,
+                color: Color(0xFF3A3A3A),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
       ),
@@ -1083,9 +1133,7 @@ class _TimelineCard extends StatelessWidget {
         icon: 'assets/images/icon/f-ico-1.png',
         title: '超级神虎 饮水',
         desc: '饮水机记录饮水约50ml',
-        media: [
-          (image: 'assets/images/group-1.png', video: true),
-        ],
+        media: [(image: 'assets/images/group-1.png', video: true)],
       ),
     ];
 
@@ -1107,19 +1155,19 @@ class _TimelineCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 板块标题（在白色卡片内）
-          const Text('时间线动态',
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: _titleColor)),
+          const Text(
+            '时间线动态',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: _titleColor,
+            ),
+          ),
           const SizedBox(height: 14),
           Column(
             children: [
               for (int i = 0; i < items.length; i++)
-                _TimelineItem(
-                  data: items[i],
-                  last: i == items.length - 1,
-                ),
+                _TimelineItem(data: items[i], last: i == items.length - 1),
             ],
           ),
         ],
@@ -1163,21 +1211,31 @@ class _TimelineItem extends StatelessWidget {
                   // 时间行：时钟图标 + 时间 + 来源
                   Row(
                     children: [
-                      Image.asset('assets/images/icon/time-ico.png',
-                          width: 14, height: 14),
+                      Image.asset(
+                        'assets/images/icon/time-ico.png',
+                        width: 14,
+                        height: 14,
+                      ),
                       const SizedBox(width: 5),
-                      Text(data.time,
-                          style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: _titleColor)),
+                      Text(
+                        data.time,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: _titleColor,
+                        ),
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(data.source,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontSize: 11, color: _subColor)),
+                        child: Text(
+                          data.source,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: _subColor,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -1188,18 +1246,26 @@ class _TimelineItem extends StatelessWidget {
                       Image.asset(data.icon, width: 18, height: 18),
                       const SizedBox(width: 6),
                       Expanded(
-                        child: Text(data.title,
-                            style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: _titleColor)),
+                        child: Text(
+                          data.title,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: _titleColor,
+                          ),
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 4),
-                  Text(data.desc,
-                      style: const TextStyle(
-                          fontSize: 12, color: _subColor, height: 1.5)),
+                  Text(
+                    data.desc,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: _subColor,
+                      height: 1.5,
+                    ),
+                  ),
                   if (data.media.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     _MediaRow(media: data.media),
@@ -1244,8 +1310,7 @@ class _MediaRow extends StatelessWidget {
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(10),
-          child:
-              Image.asset(m.image, width: w, height: 92, fit: BoxFit.cover),
+          child: Image.asset(m.image, width: w, height: 92, fit: BoxFit.cover),
         ),
         if (m.video)
           Positioned.fill(
@@ -1258,8 +1323,12 @@ class _MediaRow extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: _mask,
                 ),
-                child: Image.asset('assets/images/icon/vector-ico.png',
-                    width: 10, height: 10, fit: BoxFit.contain),
+                child: Image.asset(
+                  'assets/images/icon/vector-ico.png',
+                  width: 10,
+                  height: 10,
+                  fit: BoxFit.contain,
+                ),
               ),
             ),
           ),
@@ -1272,8 +1341,10 @@ class _MediaRow extends StatelessWidget {
               color: _mask,
               borderRadius: BorderRadius.circular(999),
             ),
-            child: Text(m.video ? '视频' : '照片',
-                style: const TextStyle(fontSize: 10, color: Colors.white)),
+            child: Text(
+              m.video ? '视频' : '照片',
+              style: const TextStyle(fontSize: 10, color: Colors.white),
+            ),
           ),
         ),
       ],

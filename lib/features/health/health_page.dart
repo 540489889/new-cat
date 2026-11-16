@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -6,7 +7,7 @@ import 'vital_records_page.dart';
 
 /// 健康页：本周健康概览 + 功能入口宫格 + 今日状态 + 近期异常 + 护理提醒 + AI 问答浮条。
 /// UI 按设计稿 1:1 还原；数据当前为本地 mock，接入后端后替换即可。
-class HealthPage extends StatelessWidget {
+class HealthPage extends StatefulWidget {
   const HealthPage({super.key});
 
   // 设计稿色板
@@ -22,6 +23,37 @@ class HealthPage extends StatelessWidget {
   static const Color _warnBg = Color(0xFFFBEEE0); // 橙标签底
   static const Color _warnInk = Color(0xFFD98E3B); // 橙标签字
 
+  /// 标题栏高度（不含状态栏）：内容滚动盒子的上边界，
+  /// 也是「状态栏 + 标题」占用的高度
+  static const double _titleBarHeight = 58;
+
+  @override
+  State<HealthPage> createState() => _HealthPageState();
+}
+
+/// 页面状态：承载滚动监听，驱动顶部头像轮播的透明渐隐
+class _HealthPageState extends State<HealthPage> {
+  final ScrollController _scrollController = ScrollController();
+
+  /// 当前滚动偏移量。用 ValueNotifier 而非 setState，
+  /// 滚动时只重建轮播的 Opacity，不重建整页。
+  final ValueNotifier<double> _offset = ValueNotifier<double>(0);
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(() {
+      _offset.value = _scrollController.offset;
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _offset.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).padding.top;
@@ -30,25 +62,29 @@ class HealthPage extends StatelessWidget {
     // 只需再让出 AI 浮条（48）+ 上下间距
     final bottomPad = bottomInset + 76.0;
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: HealthPage._bg,
       body: Stack(
         children: [
-          // 顶部渐变头部（状态栏 + 标题 + 头像轮播）绘制在底层——
-          // 与首页一致：滚动内容放顶层，滚动时卡片直接压住/盖过顶部区域
+          // 顶部渐变头部（状态栏 + 标题 + 头像轮播）绘制在底层
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            child: _Header(topInset: topInset),
+            child: _Header(topInset: topInset, offset: _offset),
           ),
-          // 滚动内容铺顶层（含各卡片）：首卡本就压在渐变尾部约 18px，
-          // 层级对调后「压住顶部」真正生效，滚动时卡片从头部上方滑过；
-          // 顶部空白区可垂直拖动滚动，点击/水平滑动仍可穿透到底层头像轮播
-          Positioned.fill(
+          // 滚动内容盒子：高度 = 一屏 − 状态栏 − 标题栏，
+          // 内容只在盒子内滚动，超出盒子上边界的部分被 ScrollView 自身裁剪，
+          // 因此永远不会遮挡状态栏 / 标题
+          Positioned(
+            top: topInset + HealthPage._titleBarHeight,
+            left: 0,
+            right: 0,
+            bottom: 0,
             child: SingleChildScrollView(
-              // 首卡起点在头像底部之下，留出下间距后再向上压住渐变尾部
+              controller: _scrollController,
+              // 盒子坐标内留白：保持首卡在屏幕上的位置仍为 topInset + 150
               padding: EdgeInsets.only(
-                top: topInset + 150,
+                top: 150 - HealthPage._titleBarHeight,
                 bottom: bottomPad,
               ),
               child: Column(
@@ -83,7 +119,14 @@ class HealthPage extends StatelessWidget {
 /// 顶部渐变头部：标题 + 日期 + 双头像，渐变底部融入页面暖米底色。
 class _Header extends StatelessWidget {
   final double topInset;
-  const _Header({required this.topInset});
+
+  /// 页面滚动偏移量：用于让头像轮播随内容上滑而渐隐
+  final ValueListenable<double> offset;
+
+  const _Header({required this.topInset, required this.offset});
+
+  /// 轮播渐隐距离：滚动该距离后完全透明
+  static const double _fadeDistance = 120;
 
   @override
   Widget build(BuildContext context) {
@@ -133,8 +176,23 @@ class _Header extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-          // 头像轮播：多宠物可左右滑动/点击切换，单宠物退化为静态大头像
-          Center(child: const _PetAvatarCarousel()),
+          // 头像轮播：多宠物可左右滑动/点击切换，单宠物退化为静态大头像。
+          // 内容上滑时轮播整体透明度由 1 渐变到 0，让位给卡片内容
+          Center(
+            child: ValueListenableBuilder<double>(
+              valueListenable: offset,
+              builder: (context, value, child) {
+                final opacity = (1 - value / _fadeDistance).clamp(0.0, 1.0);
+                return IgnorePointer(
+                  // 完全透明后不再响应点击，避免"看不见但能点到"
+                  ignoring: opacity == 0,
+                  child: Opacity(opacity: opacity, child: child),
+                );
+              },
+              // 复用同一子组件实例：透明度变化不重建轮播、不丢 PageController 状态
+              child: const _PetAvatarCarousel(),
+            ),
+          ),
         ],
       ),
     );
