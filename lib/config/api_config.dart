@@ -22,4 +22,7 @@ class ApiConfig {
 
   /// 用户协议
   static const String userAgreementUrl = '$staticBase/user_agreement.html';
+
+  /// 公司信息（关于我们）
+  static const String companyUrl = '$staticBase/company.html';
 }

@@ -2,6 +2,10 @@ import 'package:tdesign_flutter/tdesign_flutter.dart';
 
 import '../../features/components/components_page.dart';
 import '../../features/demo/demo_detail_page.dart';
+import '../../features/member/about_us_page.dart';
+import '../../features/member/news_page.dart';
+import '../../features/member/notification_settings_page.dart';
+import '../../features/member/user_profile_page.dart';
 import '../../features/pet/pet_detail_page.dart';
 import '../../features/settings/setting_prefs_page.dart';
 import '../../shared/widgets/status_bar_style.dart';
@@ -16,6 +20,10 @@ class AppRoutes {
   static const String components = '/components';
   static const String petDetail = '/pet/detail';
   static const String settings = '/settings';
+  static const String userProfile = '/member/profile';
+  static const String noticeSettings = '/member/notice-settings';
+  static const String aboutUs = '/member/about';
+  static const String news = '/member/news';
 }
 
 class AppRouter {
@@ -52,6 +60,26 @@ class AppRouter {
           builder: (_) => const SettingPrefsPage(),
           settings: settings,
         );
+      case AppRoutes.userProfile:
+        return MaterialPageRoute(
+          builder: (_) => const UserProfilePage(),
+          settings: settings,
+        );
+      case AppRoutes.noticeSettings:
+        return MaterialPageRoute(
+          builder: (_) => const NotificationSettingsPage(),
+          settings: settings,
+        );
+      case AppRoutes.aboutUs:
+        return MaterialPageRoute(
+          builder: (_) => const AboutUsPage(),
+          settings: settings,
+        );
+      case AppRoutes.news:
+        return MaterialPageRoute(
+          builder: (_) => const NewsPage(),
+          settings: settings,
+        );
       default:
         return MaterialPageRoute(
           builder: (_) => _NotFoundPage(routeName: settings.name),
@@ -70,7 +98,11 @@ class _NotFoundPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return StatusBarStyle(
       child: Scaffold(
-        appBar: TNavBar(title: const Text('页面不存在'), useDefaultBack: true),
+        appBar: TNavBar(
+          title: const Text('页面不存在'),
+          useDefaultBack: true,
+          useSafeArea: true,
+        ),
         body: Center(
           child: Padding(
             padding: EdgeInsets.all(context.tTheme.spacer3),

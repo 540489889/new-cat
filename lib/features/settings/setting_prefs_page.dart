@@ -3,6 +3,7 @@ import 'package:tdesign_flutter/tdesign_flutter.dart';
 
 import '../../core/auth/auth_service.dart';
 import '../../core/theme/theme_controller.dart';
+import '../../shared/widgets/confirm_dialog.dart';
 import '../../shared/widgets/status_bar_style.dart';
 
 /// 设置页（参考 f-cat 资料页的设置能力）：
@@ -27,7 +28,11 @@ class SettingPrefsPage extends StatelessWidget {
     return StatusBarStyle(
       child: Scaffold(
         backgroundColor: _bg,
-        appBar: TNavBar(title: const Text('设置'), useDefaultBack: true),
+        appBar: TNavBar(
+          title: const Text('设置'),
+          useDefaultBack: true,
+          useSafeArea: true,
+        ),
         body: ListView(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
           children: [
@@ -84,75 +89,15 @@ class SettingPrefsPage extends StatelessWidget {
     );
   }
 
-  /// 退出登录确认弹窗：与登录页协议弹窗同款的自定义样式
-  /// （白底圆角 + 左灰描边/右红色实心胶囊按钮），替代原生 AlertDialog。
+  /// 退出登录确认弹窗：复用通用确认弹窗（白底圆角 + 双胶囊按钮）。
   Future<void> _confirmLogout(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        return Dialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('退出登录',
-                    style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87)),
-                const SizedBox(height: 12),
-                const Text(
-                  '确定要退出当前账号吗？',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: Colors.black54),
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(ctx).pop(false),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.grey,
-                          side: const BorderSide(color: Colors.grey),
-                          padding: const EdgeInsets.symmetric(horizontal: 15),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                        ),
-                        child: const Text('取消'),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.of(ctx).pop(true),
-                        style: ElevatedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          backgroundColor: _red,
-                          padding: const EdgeInsets.symmetric(horizontal: 15),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                        ),
-                        child: const Text('退出登录'),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-              ],
-            ),
-          ),
-        );
-      },
+    final ok = await showConfirmDialog(
+      context,
+      title: '退出登录',
+      content: '确定要退出当前账号吗？',
+      confirmText: '退出登录',
     );
-    if (confirmed == true) {
+    if (ok) {
       // 登出会同步 notifyListeners，AuthGate 随之切回登录页；
       // 本页面随 MainShell 一起被替换，故这里不做任何 Navigator 跳转。
       await AuthService.instance.logout();

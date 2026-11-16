@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -5,7 +6,7 @@ import '../../core/pet/pet_state.dart';
 
 /// 宠物页：宠物档案卡 + 功能入口宫格 + 今日冒险日记 + 今日集锦 + AI 问答浮条。
 /// UI 按设计稿 1:1 还原；数据当前为本地 mock，接入后端后替换即可。
-class PetPage extends StatelessWidget {
+class PetPage extends StatefulWidget {
   const PetPage({super.key});
 
   // 设计稿色板
@@ -33,13 +34,40 @@ class PetPage extends StatelessWidget {
   static const double _gradientHeightExtra = 300.0;
 
   @override
+  State<PetPage> createState() => _PetPageState();
+}
+
+/// 页面状态：承载滚动监听，驱动档案卡「被标题栏遮挡部分渐隐」效果
+class _PetPageState extends State<PetPage> {
+  final ScrollController _scrollController = ScrollController();
+
+  /// 当前滚动偏移量。用 ValueNotifier 而非 setState，
+  /// 使滚动时只重建遮罩那一小块，不重建整页。
+  final ValueNotifier<double> _offset = ValueNotifier<double>(0);
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(() {
+      _offset.value = _scrollController.offset;
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _offset.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).padding.top;
     final bottomInset = MediaQuery.of(context).padding.bottom;
     // extendBody 下 padding.bottom 已含底部胶囊 TabBar 高度，再留少量间距（与健康页一致）
     final bottomPad = bottomInset + 76.0;
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: PetPage._bg,
       body: Stack(
         children: [
           // 顶部渐变背景层（置于内容之后）：标题区与档案卡初始位置都落在渐变上；
@@ -56,14 +84,22 @@ class PetPage extends StatelessWidget {
           // 滚动内容铺底层（档案卡/宫格/日记/集锦）；档案卡为首个元素，随内容滚动
           Positioned.fill(
             child: SingleChildScrollView(
+              controller: _scrollController,
               // 顶部留白 = 固定标题栏高度(topInset+58) + 间隙，保证首张档案卡完全在标题栏下方、不被其渐变背景遮挡
               padding: EdgeInsets.only(top: topInset + 62, bottom: bottomPad),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 注意：这里刻意不用 const —— const 无参实例在热重载时会被
-                  // 判定为 identical 而跳过整个子树重建，导致改动不生效
-                  _PetProfileCard(),
+                  // 档案卡：滑入顶部标题栏下方时，组件整体由不透明渐变为全透明
+                  _FadingUnderHeader(
+                    offset: _offset,
+                    cardTopY: topInset + 62,
+                    // 标题栏下沿 = topInset + 10(上留白) + 36(按钮) + 12(下留白)
+                    headerBottomY: topInset + 58,
+                    // 注意：这里刻意不用 const —— const 无参实例在热重载时会被
+                    // 判定为 identical 而跳过整个子树重建，导致改动不生效
+                    child: _PetProfileCard(),
+                  ),
                   _FeatureGrid(),
                   _AdventureDiaryCard(),
                   _HighlightsCard(),
@@ -87,6 +123,51 @@ class PetPage extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 档案卡「被标题栏遮挡即整卡渐隐」：卡片越往标题栏下沿里钻，
+/// 组件整体透明度越低（1 → 0），完全被压住后彻底消失。
+///
+/// 遮挡深度由「卡片初始屏内 y − 滚动偏移」直接推算，无需读取 RenderBox；
+/// 用 ValueListenableBuilder 只重建 Opacity，滚动时不触发整页重建。
+class _FadingUnderHeader extends StatelessWidget {
+  /// 页面滚动偏移量（共享同一个 notifier）
+  final ValueListenable<double> offset;
+
+  /// 未滚动时卡片顶部在屏幕上的 y
+  final double cardTopY;
+
+  /// 顶部标题栏下沿的 y
+  final double headerBottomY;
+
+  final Widget child;
+
+  const _FadingUnderHeader({
+    required this.offset,
+    required this.cardTopY,
+    required this.headerBottomY,
+    required this.child,
+  });
+
+  /// 淡出距离：卡片顶部被遮挡到该深度时完全透明
+  static const double _fadeDistance = 200;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<double>(
+      valueListenable: offset,
+      builder: (context, value, _) {
+        // 卡片顶部滑进标题栏下沿的深度（负值表示尚未被遮挡）
+        final depth = headerBottomY - (cardTopY - value);
+        if (depth <= 0) {
+          // 完全露在标题栏下方：保持不透明，避免多余合成层
+          return child;
+        }
+        final opacity = (1 - depth / _fadeDistance).clamp(0.0, 1.0);
+        return Opacity(opacity: opacity, child: child);
+      },
     );
   }
 }

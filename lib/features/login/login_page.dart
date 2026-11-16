@@ -390,98 +390,52 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  /// 未勾选协议时弹出的确认框（与 f-cat 登录页一致）：
+  /// 未勾选协议时弹出的确认框（基于 tdesign TDialog）：
   /// 「不同意」关闭；「同意并继续」勾选协议并执行后续登录动作。
   void _showProtocolDialog({VoidCallback? onAgree}) {
     final brand = context.tTheme.brandColor;
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return Dialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+    TDialog.show<void>(
+      context,
+      dialog: TDialog(
+        // 暂时去掉标题（预览无标题样式）
+        content: RichText(
+          textAlign: TextAlign.left,
+          text: TextSpan(
+            style: const TextStyle(
+                fontSize: 14, color: Colors.black87, height: 1.5),
+            children: [
+              const TextSpan(text: '为了更好地保障您的合法权益，请你阅读'),
+              TextSpan(
+                text: '《隐私政策》',
+                style: TextStyle(color: brand),
+                recognizer: TapGestureRecognizer()
+                  ..onTap = () => _openUrl(ApiConfig.privacyUrl),
+              ),
+              const TextSpan(text: '、'),
+              TextSpan(
+                text: '《用户协议》',
+                style: TextStyle(color: brand),
+                recognizer: TapGestureRecognizer()
+                  ..onTap = () => _openUrl(ApiConfig.userAgreementUrl),
+              ),
+              const TextSpan(text: '，点击同意后将继续登录'),
+            ],
           ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('隐私政策和服务协议',
-                    style: TextStyle(
-                        fontSize: 17, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 16),
-                RichText(
-                  textAlign: TextAlign.left,
-                  text: TextSpan(
-                    style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.black87,
-                        height: 1.5),
-                    children: [
-                      const TextSpan(
-                          text: '为了更好地保障您的合法权益，请你阅读'),
-                      TextSpan(
-                        text: '《隐私政策》',
-                        style: TextStyle(color: brand),
-                        recognizer: TapGestureRecognizer()
-                          ..onTap = () => _openUrl(ApiConfig.privacyUrl),
-                      ),
-                      const TextSpan(text: '、'),
-                      TextSpan(
-                        text: '《用户协议》',
-                        style: TextStyle(color: brand),
-                        recognizer: TapGestureRecognizer()
-                          ..onTap =
-                              () => _openUrl(ApiConfig.userAgreementUrl),
-                      ),
-                      const TextSpan(text: '，点击同意后将继续登录'),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(ctx).pop(),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.grey,
-                          side: const BorderSide(color: Colors.grey),
-                          padding: const EdgeInsets.symmetric(horizontal: 15),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                        ),
-                        child: const Text('不同意'),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(ctx).pop();
-                          setState(() => _agreed = true);
-                          onAgree?.call();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          backgroundColor: brand,
-                          padding: const EdgeInsets.symmetric(horizontal: 15),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                        ),
-                        child: const Text('同意并继续'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+        ),
+        actions: [
+          const TDialogAction(
+            child: Text('不同意'),
           ),
-        );
-      },
+          TDialogAction(
+            child: const Text('同意并继续'),
+            role: TDialogActionRole.primary,
+            onPressed: () {
+              setState(() => _agreed = true);
+              onAgree?.call();
+            },
+          ),
+        ],
+      ),
     );
   }
 

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:tdesign_flutter/tdesign_flutter.dart';
 
 import '../../core/router/app_router.dart';
+import '../../core/user/user_state.dart';
 
 /// 「我的」页：按设计稿 1:1 还原。
 /// 结构：设置入口 → 用户信息 → 会员权益横幅 → 商城 → 我的设备 → 家庭成员 → 通用列表。
@@ -40,17 +43,26 @@ class SettingsPage extends StatelessWidget {
             child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 顶部右侧设置入口
+            // 顶部右侧：消息铃铛 + 设置入口
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: GestureDetector(
-                  onTap: () =>
-                      Navigator.of(context).pushNamed(AppRoutes.settings),
-                  child: const Icon(Icons.settings_outlined,
-                      size: 22, color: _ink),
-                ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  GestureDetector(
+                    onTap: () =>
+                        Navigator.of(context).pushNamed(AppRoutes.news),
+                    child: const Icon(Icons.notifications_none_rounded,
+                        size: 23, color: _ink),
+                  ),
+                  const SizedBox(width: 18),
+                  GestureDetector(
+                    onTap: () =>
+                        Navigator.of(context).pushNamed(AppRoutes.settings),
+                    child: const Icon(Icons.settings_outlined,
+                        size: 22, color: _ink),
+                  ),
+                ],
               ),
             ),
             const _ProfileHeader(),
@@ -110,56 +122,75 @@ class _IconBox extends StatelessWidget {
   }
 }
 
-/// 用户信息：圆头像 + 昵称 + 手机号，右侧箭头
+/// 用户信息：圆头像 + 昵称 + 手机号，右侧箭头（点击进入个人资料页）
 class _ProfileHeader extends StatelessWidget {
   const _ProfileHeader();
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 20, 20, 0),
-      child: Row(
-        children: [
-          // 头像（本地猫图占位，接入用户中心后替换为真实头像）
-          // 白色边框（白底 + 内间距形成白环）+ 内间距 + 阴影
-          Container(
-            width: 72,
-            height: 72,
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white,
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x1A3D2E33),
-                  blurRadius: 8,
-                  offset: Offset(0, 2),
-                ),
-              ],
+    // 登录/资料变更后自动刷新（UserState 由登录响应 memberInfo 与 /app/member/info 驱动）
+    final userState = context.watch<UserState>();
+    final mobile = userState.maskedMobile;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () =>
+          Navigator.of(context).pushNamed(AppRoutes.userProfile),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(28, 20, 20, 0),
+        child: Row(
+          children: [
+            // 头像：有网络头像用网络图，否则用本地猫图占位
+            // 白色边框（白底 + 内间距形成白环）+ 内间距 + 阴影
+            Container(
+              width: 72,
+              height: 72,
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x1A3D2E33),
+                    blurRadius: 8,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: ClipOval(
+                child: userState.avatarUrl != null
+                    ? Image.network(
+                        userState.avatarUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Image.asset(
+                            'assets/images/group-1.png',
+                            fit: BoxFit.cover),
+                      )
+                    : Image.asset('assets/images/group-1.png',
+                        fit: BoxFit.cover),
+              ),
             ),
-            child: ClipOval(
-              child: Image.asset('assets/images/group-1.png', fit: BoxFit.cover),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(userState.username,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: SettingsPage._ink)),
+                  const SizedBox(height: 4),
+                  Text(mobile.isEmpty ? '未绑定手机号' : mobile,
+                      style: const TextStyle(
+                          fontSize: 12, color: SettingsPage._sub)),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text('赵德柱呀',
-                    style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: SettingsPage._ink)),
-                SizedBox(height: 4),
-                Text('182 **** 3210',
-                    style: TextStyle(
-                        fontSize: 12, color: SettingsPage._sub)),
-              ],
-            ),
-          ),
-          const Icon(Icons.chevron_right, size: 20, color: SettingsPage._sub),
-        ],
+            const Icon(Icons.chevron_right, size: 20, color: SettingsPage._sub),
+          ],
+        ),
       ),
     );
   }
@@ -441,40 +472,64 @@ class _GeneralList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget row(String asset, String title, {String? note}) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Row(
-          children: [
-            _IconBox(asset: asset, size: 36),
-            const SizedBox(width: 12),
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 14, color: SettingsPage._ink)),
-            const Spacer(),
-            if (note != null) ...[
-              Text(note,
+    Widget row(Widget leading, String title,
+        {String? note, VoidCallback? onTap}) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            children: [
+              leading,
+              const SizedBox(width: 12),
+              Text(title,
                   style: const TextStyle(
-                      fontSize: 11, color: SettingsPage._sub)),
-              const SizedBox(width: 4),
+                      fontSize: 14, color: SettingsPage._ink)),
+              const Spacer(),
+              if (note != null) ...[
+                Text(note,
+                    style: const TextStyle(
+                        fontSize: 11, color: SettingsPage._sub)),
+                const SizedBox(width: 4),
+              ],
+              const Icon(Icons.chevron_right,
+                  size: 16, color: SettingsPage._sub),
             ],
-            const Icon(Icons.chevron_right,
-                size: 16, color: SettingsPage._sub),
-          ],
+          ),
         ),
       );
     }
 
+    Widget png(String asset) => _IconBox(asset: asset, size: 36);
+
+    Widget icon(IconData data) => SizedBox(
+          width: 36,
+          height: 36,
+          child: Center(
+            child: Icon(data, size: 20, color: SettingsPage._brand),
+          ),
+        );
+
+    void comingSoon() => TToast.showText('功能即将开放', context: context);
+
     return _Card(
       child: Column(
         children: [
-          row('assets/images/icon/m-d1.png', '客服'),
+          row(png('assets/images/icon/m-d1.png'), '客服', onTap: comingSoon),
           Container(height: 1, color: SettingsPage._divider),
-          row('assets/images/icon/m-d6.png', '投诉建议'),
+          row(png('assets/images/icon/m-d6.png'), '投诉建议', onTap: comingSoon),
           Container(height: 1, color: SettingsPage._divider),
-          row('assets/images/icon/m-d4.png', '检查更新'),
+          row(png('assets/images/icon/m-d4.png'), '检查更新',
+              note: '最新版本',
+              onTap: () => TToast.showSuccess('已是最新版本', context: context)),
           Container(height: 1, color: SettingsPage._divider),
-          row('assets/images/icon/m-d5.png', '关于我们', note: '最新版本'),
+          row(icon(Icons.notifications_active_outlined), '消息设置',
+              onTap: () =>
+                  Navigator.of(context).pushNamed(AppRoutes.noticeSettings)),
+          Container(height: 1, color: SettingsPage._divider),
+          row(png('assets/images/icon/m-d5.png'), '关于我们',
+              onTap: () => Navigator.of(context).pushNamed(AppRoutes.aboutUs)),
         ],
       ),
     );

@@ -87,6 +87,33 @@ class AuthService extends ChangeNotifier {
   /// 接入真实一键登录后，改回由 access_token 判定即可。
   static const String _sessionKey = 'local_logged_in';
 
+  /// 用户信息缓存（对齐参考项目 f-cat 的 `login_user` key）：
+  /// JSON 字符串，内容为登录/会员信息接口返回的 memberInfo。
+  static const String _userInfoKey = 'login_user';
+
+  /// 保存用户信息到本地（登录成功、会员信息接口返回时调用）。
+  static Future<void> saveUserInfo(Map<String, dynamic> info) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_userInfoKey, jsonEncode(info));
+    } catch (_) {
+      // 插件不可用时忽略
+    }
+  }
+
+  /// 读取本地缓存的用户信息；无缓存返回 null。
+  static Future<Map<String, dynamic>?> getUserInfo() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_userInfoKey);
+      if (raw == null || raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Map<String, String> get _jsonHeaders =>
       {'Content-Type': 'application/json; charset=utf-8'};
 
@@ -331,6 +358,11 @@ class AuthService extends ChangeNotifier {
             result.refreshToken!,
             expiresIn: result.expiresIn ?? 1800,
           );
+          // 登录响应里的 memberInfo 即用户信息，落本地缓存供个人中心展示
+          final info = result.userInfo;
+          if (info != null && info.isNotEmpty) {
+            await saveUserInfo(info);
+          }
           _loggedIn = true;
           notifyListeners();
           return result;
@@ -362,6 +394,9 @@ class AuthService extends ChangeNotifier {
     // 先同步置为未登录并通知：让 AuthGate 立即跳转登录页、
     // 并让进行中的请求（及 PetState 等轮询）立刻短路，避免对已失效会话反复打网络。
     _loggedIn = false;
+    // 清掉恢复缓存：否则下次 restore() 会直接复用登出前的 true，
+    // 导致登出后重建 AuthGate 又显示为已登录（测试用例间也会互相污染）。
+    _restoreFuture = null;
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -369,6 +404,7 @@ class AuthService extends ChangeNotifier {
       await prefs.remove(_refreshTokenKey);
       await prefs.remove('${_tokenKey}_expires_at');
       await prefs.remove(_sessionKey);
+      await prefs.remove(_userInfoKey);
     } catch (_) {
       // 插件不可用（如测试环境）时忽略本地清理
     }

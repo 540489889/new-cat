@@ -5,6 +5,7 @@ import 'core/pet/pet_state.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'core/user/user_state.dart';
 
 /// 应用根节点：挂载主题与路由。
 class App extends StatefulWidget {
@@ -34,8 +35,14 @@ class _AppState extends State<App> {
   Widget build(BuildContext context) {
     return AppThemeScope(
       controller: _themeController,
-      child: ChangeNotifierProvider<PetState>(
-        create: (_) => PetState(),
+      child: MultiProvider(
+        providers: [
+          ChangeNotifierProvider<PetState>(create: (_) => PetState()),
+          // 用户信息全局状态：登录后自动从本地缓存恢复，供个人中心/资料页展示
+          ChangeNotifierProvider<UserState>(
+            create: (_) => UserState()..checkLoginStatus(),
+          ),
+        ],
         child: AnimatedBuilder(
           animation: _themeController,
           builder: (context, _) {

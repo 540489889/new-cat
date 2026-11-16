@@ -2,15 +2,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:new_f_cat/app.dart';
 import 'package:new_f_cat/core/auth/auth_service.dart';
 import 'package:new_f_cat/core/theme/app_theme.dart';
+import 'package:new_f_cat/shared/layouts/main_shell.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tdesign_flutter/tdesign_flutter.dart';
 
 void main() {
-  setUp(() {
+  setUp(() async {
     // 为 shared_preferences 提供内存桩，避免测试环境缺少原生实现抛 MissingPlugin
     SharedPreferences.setMockInitialValues({});
-    // AuthService 是单例，跨测试重置登录态
-    AuthService.instance.logout();
+    // AuthService 是单例，跨测试重置登录态；
+    // logout 内部有异步清理，必须 await，否则下个用例可能仍处于登录态
+    await AuthService.instance.logout();
   });
 
   test('浅色 / 深色主题 Token 可构建', () {
@@ -40,32 +42,28 @@ void main() {
 
     // 未登录：展示一键登录页（支持一键登录的机型默认态）
     expect(find.text('本机号码一键登录'), findsOneWidget);
-    expect(find.byType(TTabBar), findsNothing);
+    expect(find.byType(MainShell), findsNothing);
 
     await loginThroughOneClick(tester);
 
     // 登录成功：进入主框架
-    expect(find.byType(TTabBar), findsOneWidget);
+    expect(find.byType(MainShell), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('底部 Tab 可以切换', (WidgetTester tester) async {
     await loginThroughOneClick(tester);
 
-    final tabBar = find.byType(TTabBar);
-
-    await tester.tap(
-      find.descendant(of: tabBar, matching: find.text('日志')),
-    );
+    // 健康 tab
+    await tester.tap(find.text('健康'));
     await tester.pumpAndSettle();
-    expect(find.text('自动喂食完成'), findsOneWidget);
+    expect(find.text('本周整体稳定，状态良好～'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    await tester.tap(
-      find.descendant(of: tabBar, matching: find.text('我的')),
-    );
+    // 我的 tab（用户中心页）
+    await tester.tap(find.text('我的'));
     await tester.pumpAndSettle();
-    expect(find.text('外观'), findsOneWidget);
+    expect(find.text('我的设备'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

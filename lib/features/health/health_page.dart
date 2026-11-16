@@ -33,12 +33,24 @@ class HealthPage extends StatelessWidget {
       backgroundColor: _bg,
       body: Stack(
         children: [
-          // 滚动内容铺底层（含各卡片）；其顶部空白区原本会拦截头部手势，
-          // 故头部改到上层绘制，保证头像轮播能收到点击/滑动
+          // 顶部渐变头部（状态栏 + 标题 + 头像轮播）绘制在底层——
+          // 与首页一致：滚动内容放顶层，滚动时卡片直接压住/盖过顶部区域
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _Header(topInset: topInset),
+          ),
+          // 滚动内容铺顶层（含各卡片）：首卡本就压在渐变尾部约 18px，
+          // 层级对调后「压住顶部」真正生效，滚动时卡片从头部上方滑过；
+          // 顶部空白区可垂直拖动滚动，点击/水平滑动仍可穿透到底层头像轮播
           Positioned.fill(
             child: SingleChildScrollView(
               // 首卡起点在头像底部之下，留出下间距后再向上压住渐变尾部
-              padding: EdgeInsets.only(top: topInset + 150, bottom: bottomPad),
+              padding: EdgeInsets.only(
+                top: topInset + 150,
+                bottom: bottomPad,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -52,14 +64,6 @@ class HealthPage extends StatelessWidget {
                 ],
               ),
             ),
-          ),
-          // 顶部渐变头部（状态栏 + 标题 + 头像轮播）绘制在最上层，
-          // 渐变底部透明，卡片可透过显示；头像因此能正常接收点击/滑动
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: _Header(topInset: topInset),
           ),
           // 底部 AI 问答浮条：紧贴胶囊 TabBar 上方。
           // 注意 padding.bottom 已含 TabBar 高度（extendBody 注入），
@@ -109,16 +113,21 @@ class _Header extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text('健康',
-                    style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: HealthPage._ink)),
+                Text(
+                  '健康',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: HealthPage._ink,
+                  ),
+                ),
                 SizedBox(width: 8),
                 Padding(
                   padding: EdgeInsets.only(bottom: 3),
-                  child: Text('9月28日',
-                      style: TextStyle(fontSize: 12, color: HealthPage._body)),
+                  child: Text(
+                    '9月28日',
+                    style: TextStyle(fontSize: 12, color: HealthPage._body),
+                  ),
                 ),
               ],
             ),
@@ -201,17 +210,19 @@ class _PetAvatarCarouselState extends State<_PetAvatarCarousel> {
       _pageCtrl?.dispose();
       _pageCtrl = PageController(
         viewportFraction: 0.34,
-        initialPage:
-            pets.isEmpty ? 0 : pet.selectedIndex.clamp(0, pets.length - 1),
+        initialPage: pets.isEmpty
+            ? 0
+            : pet.selectedIndex.clamp(0, pets.length - 1),
       );
     } else if (_pageCtrl != null && pets.isNotEmpty) {
       // 选中项被外部改变时平滑跟随
       final target = pet.selectedIndex.clamp(0, pets.length - 1);
-      if (_pageCtrl!.hasClients &&
-          (_pageCtrl!.page?.round() ?? -1) != target) {
-        _pageCtrl!.animateToPage(target,
-            duration: const Duration(milliseconds: 280),
-            curve: Curves.easeOut);
+      if (_pageCtrl!.hasClients && (_pageCtrl!.page?.round() ?? -1) != target) {
+        _pageCtrl!.animateToPage(
+          target,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOut,
+        );
       }
     }
   }
@@ -221,9 +232,11 @@ class _PetAvatarCarouselState extends State<_PetAvatarCarousel> {
     if (pets.isEmpty || _pageCtrl?.hasClients != true) return;
     final target = (_pet?.selectedIndex ?? 0).clamp(0, pets.length - 1);
     if ((_pageCtrl!.page?.round() ?? -1) != target) {
-      _pageCtrl!.animateToPage(target,
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOut);
+      _pageCtrl!.animateToPage(
+        target,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOut,
+      );
     }
   }
 
@@ -249,7 +262,9 @@ class _PetAvatarCarouselState extends State<_PetAvatarCarousel> {
       // 无数据：退化为静态大头像（同样占 92 高度，保证与轮播一致的下间距）
       return SizedBox(
         height: 92,
-        child: Center(child: const _PetAvatar(head: '', ringed: true, size: 80)),
+        child: Center(
+          child: const _PetAvatar(head: '', ringed: true, size: 80),
+        ),
       );
     }
     return GestureDetector(
@@ -329,16 +344,20 @@ class _CardHeader extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
           children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: HealthPage._ink)),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: HealthPage._ink,
+              ),
+            ),
             if (note != null) ...[
               const SizedBox(width: 6),
-              Text(note!,
-                  style:
-                      const TextStyle(fontSize: 10, color: HealthPage._sub)),
+              Text(
+                note!,
+                style: const TextStyle(fontSize: 10, color: HealthPage._sub),
+              ),
             ],
           ],
         ),
@@ -348,8 +367,10 @@ class _CardHeader extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(action,
-                style: const TextStyle(fontSize: 11, color: HealthPage._sub)),
+            Text(
+              action,
+              style: const TextStyle(fontSize: 11, color: HealthPage._sub),
+            ),
             const Icon(Icons.chevron_right, size: 14, color: HealthPage._sub),
           ],
         ),
@@ -373,8 +394,10 @@ class _Tag extends StatelessWidget {
         color: bg,
         borderRadius: BorderRadius.circular(6),
       ),
-      child: Text(text,
-          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: ink)),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: ink),
+      ),
     );
   }
 }
@@ -391,26 +414,32 @@ class _WeeklyCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _CardHeader(
-              title: '本周健康', note: '9月5日 至 8月11日', action: '详情'),
+          const _CardHeader(title: '本周健康', note: '9月5日 至 8月11日', action: '详情'),
           const SizedBox(height: 8),
           Row(
             children: [
               if (petName.isNotEmpty) ...[
-                Text(petName,
-                    style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: HealthPage._ink)),
+                Text(
+                  petName,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: HealthPage._ink,
+                  ),
+                ),
                 const SizedBox(width: 6),
               ],
               const Expanded(
-                child: Text('本周整体稳定，状态良好～',
-                    style:
-                        TextStyle(fontSize: 11, color: HealthPage._sub)),
+                child: Text(
+                  '本周整体稳定，状态良好～',
+                  style: TextStyle(fontSize: 11, color: HealthPage._sub),
+                ),
               ),
-              const _Tag('完美状态',
-                  bg: HealthPage._goodBg, ink: HealthPage._goodInk),
+              const _Tag(
+                '完美状态',
+                bg: HealthPage._goodBg,
+                ink: HealthPage._goodInk,
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -426,12 +455,11 @@ class _WeeklyCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: const [
                 _Bullet(
-                    color: HealthPage._goodInk,
-                    text: '饮水量较上周增加 8%，已恢复到日常范围。'),
+                  color: HealthPage._goodInk,
+                  text: '饮水量较上周增加 8%，已恢复到日常范围。',
+                ),
                 SizedBox(height: 8),
-                _Bullet(
-                    color: HealthPage._warnInk,
-                    text: '周三出现一次进食量偏低，次日恢复。'),
+                _Bullet(color: HealthPage._warnInk, text: '周三出现一次进食量偏低，次日恢复。'),
               ],
             ),
           ),
@@ -462,9 +490,14 @@ class _Bullet extends StatelessWidget {
         ),
         const SizedBox(width: 6),
         Expanded(
-          child: Text(text,
-              style: const TextStyle(
-                  fontSize: 12, height: 1.4, color: HealthPage._body)),
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: 12,
+              height: 1.4,
+              color: HealthPage._body,
+            ),
+          ),
         ),
       ],
     );
@@ -478,30 +511,32 @@ class _EntryGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget card({required Widget child}) => Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: child,
-        );
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: child,
+    );
 
     // 标题 + 紧随其后的箭头
     Widget titleRow(String title) => Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: HealthPage._ink)),
-            const Icon(Icons.chevron_right,
-                size: 15, color: HealthPage._sub),
-          ],
-        );
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: HealthPage._ink,
+          ),
+        ),
+        const Icon(Icons.chevron_right, size: 15, color: HealthPage._sub),
+      ],
+    );
 
-    Widget subText(String sub) => Text(sub,
-        style: const TextStyle(fontSize: 11, color: HealthPage._sub));
+    Widget subText(String sub) =>
+        Text(sub, style: const TextStyle(fontSize: 11, color: HealthPage._sub));
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -514,38 +549,42 @@ class _EntryGrid extends StatelessWidget {
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const VitalRecordsPage(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const VitalRecordsPage()),
                 ),
                 child: card(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    titleRow('体征记录'),
-                    const SizedBox(height: 4),
-                    subText('体重/睡眠/如厕'),
-                    const SizedBox(height: 8),
-                    const _Tag('健康良好',
-                        bg: HealthPage._goodBg, ink: HealthPage._goodInk),
-                    const Spacer(),
-                    Align(
-                      alignment: Alignment.bottomRight,
-                      child: Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFECEEFA),
-                          borderRadius: BorderRadius.circular(13),
-                        ),
-                        alignment: Alignment.center,
-                        child: Image.asset('assets/images/icon/m-b1.png',
-                            width: 34, height: 34),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      titleRow('体征记录'),
+                      const SizedBox(height: 4),
+                      subText('体重/睡眠/如厕'),
+                      const SizedBox(height: 8),
+                      const _Tag(
+                        '健康良好',
+                        bg: HealthPage._goodBg,
+                        ink: HealthPage._goodInk,
                       ),
-                    ),
-                  ],
+                      const Spacer(),
+                      Align(
+                        alignment: Alignment.bottomRight,
+                        child: Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFECEEFA),
+                            borderRadius: BorderRadius.circular(13),
+                          ),
+                          alignment: Alignment.center,
+                          child: Image.asset(
+                            'assets/images/icon/m-b1.png',
+                            width: 34,
+                            height: 34,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
               ),
             ),
             const SizedBox(width: 10),
@@ -576,8 +615,11 @@ class _EntryGrid extends StatelessWidget {
                               borderRadius: BorderRadius.circular(13),
                             ),
                             alignment: Alignment.center,
-                            child: Image.asset('assets/images/icon/m-b2.png',
-                                width: 26, height: 26),
+                            child: Image.asset(
+                              'assets/images/icon/m-b2.png',
+                              width: 26,
+                              height: 26,
+                            ),
                           ),
                         ],
                       ),
@@ -607,8 +649,11 @@ class _EntryGrid extends StatelessWidget {
                               borderRadius: BorderRadius.circular(13),
                             ),
                             alignment: Alignment.center,
-                            child: Image.asset('assets/images/icon/m-b3.png',
-                                width: 26, height: 26),
+                            child: Image.asset(
+                              'assets/images/icon/m-b3.png',
+                              width: 26,
+                              height: 26,
+                            ),
                           ),
                         ],
                       ),
@@ -714,15 +759,22 @@ class _TodayRow extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Text(title,
-                      style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: HealthPage._ink)),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: HealthPage._ink,
+                    ),
+                  ),
                   const SizedBox(width: 6),
-                  Text(note,
-                      style: const TextStyle(
-                          fontSize: 10, color: HealthPage._sub)),
+                  Text(
+                    note,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: HealthPage._sub,
+                    ),
+                  ),
                   const Spacer(),
                   tag,
                 ],
@@ -735,20 +787,28 @@ class _TodayRow extends StatelessWidget {
                     if (i > 0) ...[
                       const SizedBox(width: 8),
                       Container(
-                          width: 1,
-                          height: 10,
-                          color: const Color(0xFFE8E0DA)),
+                        width: 1,
+                        height: 10,
+                        color: const Color(0xFFE8E0DA),
+                      ),
                       const SizedBox(width: 8),
                     ],
-                    Text(stats[i].$1,
-                        style: const TextStyle(
-                            fontSize: 12, color: HealthPage._sub)),
+                    Text(
+                      stats[i].$1,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: HealthPage._sub,
+                      ),
+                    ),
                     const SizedBox(width: 4),
-                    Text(stats[i].$2,
-                        style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: HealthPage._ink)),
+                    Text(
+                      stats[i].$2,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: HealthPage._ink,
+                      ),
+                    ),
                   ],
                 ],
               ),
@@ -799,13 +859,20 @@ class _AbnormalCard extends StatelessWidget {
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.auto_awesome, size: 14, color: HealthPage._iconInk),
+                  Icon(
+                    Icons.auto_awesome,
+                    size: 14,
+                    color: HealthPage._iconInk,
+                  ),
                   SizedBox(width: 6),
-                  Text('问问AI',
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: HealthPage._iconInk)),
+                  Text(
+                    '问问AI',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: HealthPage._iconInk,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -840,22 +907,32 @@ class _AbnormalItem extends StatelessWidget {
           children: [
             Image.asset(dotAsset, width: 16, height: 16),
             const SizedBox(width: 6),
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: HealthPage._ink)),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: HealthPage._ink,
+              ),
+            ),
             const Spacer(),
             tag,
           ],
         ),
         const SizedBox(height: 6),
-        Text(body,
-            style: const TextStyle(
-                fontSize: 12, height: 1.5, color: HealthPage._sub)),
+        Text(
+          body,
+          style: const TextStyle(
+            fontSize: 12,
+            height: 1.5,
+            color: HealthPage._sub,
+          ),
+        ),
         const SizedBox(height: 4),
-        Text(date,
-            style: const TextStyle(fontSize: 11, color: HealthPage._sub)),
+        Text(
+          date,
+          style: const TextStyle(fontSize: 11, color: HealthPage._sub),
+        ),
       ],
     );
   }
@@ -901,8 +978,10 @@ class _CareCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Center(
-            child: Text('还有 8 项护理待关注',
-                style: const TextStyle(fontSize: 10, color: HealthPage._sub)),
+            child: Text(
+              '还有 8 项护理待关注',
+              style: const TextStyle(fontSize: 10, color: HealthPage._sub),
+            ),
           ),
         ],
       ),
@@ -942,27 +1021,35 @@ class _CareRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title,
-                  style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: HealthPage._ink)),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: HealthPage._ink,
+                ),
+              ),
               const SizedBox(height: 3),
-              Text(sub,
-                  style: const TextStyle(
-                      fontSize: 11, color: HealthPage._sub)),
+              Text(
+                sub,
+                style: const TextStyle(fontSize: 11, color: HealthPage._sub),
+              ),
             ],
           ),
         ),
         Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            const _Tag('即将过期',
-                bg: HealthPage._warnBg, ink: HealthPage._warnInk),
+            const _Tag(
+              '即将过期',
+              bg: HealthPage._warnBg,
+              ink: HealthPage._warnInk,
+            ),
             const SizedBox(height: 3),
-            Text(date,
-                style: const TextStyle(
-                    fontSize: 10, color: HealthPage._sub)),
+            Text(
+              date,
+              style: const TextStyle(fontSize: 10, color: HealthPage._sub),
+            ),
           ],
         ),
       ],
@@ -995,8 +1082,10 @@ class _AiBar extends StatelessWidget {
           const Icon(Icons.auto_awesome, size: 18, color: HealthPage._brand),
           const SizedBox(width: 8),
           const Expanded(
-            child: Text('有什么问题都可以问我~',
-                style: TextStyle(fontSize: 13, color: HealthPage._sub)),
+            child: Text(
+              '有什么问题都可以问我~',
+              style: TextStyle(fontSize: 13, color: HealthPage._sub),
+            ),
           ),
           Image.asset(
             'assets/images/icon/voice-ico.png',

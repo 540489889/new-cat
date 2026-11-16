@@ -45,6 +45,56 @@ class ApiClient {
     return _request('POST', _buildUri(path), body);
   }
 
+  /// 文件上传（对齐参考项目 f-cat 的 `uploadFile`）。
+  ///
+  /// 接口：`POST /app/user/file/upload`，multipart 字段名 `file`，
+  /// 可通过 [extraFields] 附加表单域（如 `scene=avatar`）。
+  /// 用字节流而非 `MultipartFile.fromPath`，避免依赖 dart:io，兼容 Web 端。
+  Future<ApiResponse> uploadFile(
+    String path, {
+    required List<int> bytes,
+    required String filename,
+    String fileField = 'file',
+    Map<String, String>? extraFields,
+  }) async {
+    if (!AuthService.instance.loggedIn) {
+      return ApiResponse.unauthorized('登录已过期，请重新登录');
+    }
+    try {
+      Future<http.Response> send() async {
+        final req = http.MultipartRequest('POST', _buildUri(path));
+        final token = await AuthService.getAccessToken();
+        if (token != null && token.isNotEmpty) {
+          req.headers['Authorization'] = 'Bearer $token';
+        }
+        req.files.add(
+          http.MultipartFile.fromBytes(fileField, bytes, filename: filename),
+        );
+        if (extraFields != null && extraFields.isNotEmpty) {
+          req.fields.addAll(extraFields);
+        }
+        final streamed = await _client
+            .send(req)
+            .timeout(const Duration(seconds: ApiConfig.receiveTimeout));
+        return http.Response.fromStream(streamed);
+      }
+
+      var response = await send();
+      // 令牌失效：刷新后重试一次（与普通请求一致）
+      if (response.statusCode == 401) {
+        final refreshed = await _tryRefresh();
+        if (refreshed) {
+          response = await send();
+        } else {
+          _onSessionExpired();
+        }
+      }
+      return _parseResponse(response);
+    } catch (e) {
+      return ApiResponse.fail('上传失败：$e');
+    }
+  }
+
   Future<ApiResponse> _request(
     String method,
     Uri uri,
