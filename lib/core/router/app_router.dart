@@ -6,6 +6,7 @@ import '../../features/member/about_us_page.dart';
 import '../../features/member/news_page.dart';
 import '../../features/member/notification_settings_page.dart';
 import '../../features/member/user_profile_page.dart';
+import '../../features/pet/highlights_page.dart';
 import '../../features/pet/pet_detail_page.dart';
 import '../../features/settings/setting_prefs_page.dart';
 import '../../shared/widgets/status_bar_style.dart';
@@ -19,6 +20,7 @@ class AppRoutes {
   static const String demoDetail = '/demo/detail';
   static const String components = '/components';
   static const String petDetail = '/pet/detail';
+  static const String highlights = '/pet/highlights';
   static const String settings = '/settings';
   static const String userProfile = '/member/profile';
   static const String noticeSettings = '/member/notice-settings';
@@ -53,6 +55,11 @@ class AppRouter {
       case AppRoutes.petDetail:
         return MaterialPageRoute(
           builder: (_) => const PetDetailPage(),
+          settings: settings,
+        );
+      case AppRoutes.highlights:
+        return MaterialPageRoute(
+          builder: (_) => const HighlightsPage(),
           settings: settings,
         );
       case AppRoutes.settings:

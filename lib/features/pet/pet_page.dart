@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/pet/pet_state.dart';
+import '../../core/router/app_router.dart';
 
 /// 宠物页：宠物档案卡 + 功能入口宫格 + 今日冒险日记 + 今日集锦 + AI 问答浮条。
 /// UI 按设计稿 1:1 还原；数据当前为本地 mock，接入后端后替换即可。
@@ -146,15 +147,27 @@ class _Header extends StatelessWidget {
           stops: PetPage._topGradient.stops,
         ),
       ),
-      padding: EdgeInsets.only(left: 16, right: 16, top: topInset + 10, bottom: 12),
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: topInset + 10,
+        bottom: 12,
+      ),
       child: Row(
         children: [
-          const Text('宠物',
-              style: TextStyle(
-                  fontSize: 17, fontWeight: FontWeight.w700, color: PetPage._ink)),
+          const Text(
+            '宠物',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: PetPage._ink,
+            ),
+          ),
           const SizedBox(width: 4),
-          Text('$count',
-              style: const TextStyle(fontSize: 12, color: Color(0xFFB9AEB2))),
+          Text(
+            '$count',
+            style: const TextStyle(fontSize: 12, color: Color(0xFFB9AEB2)),
+          ),
           const Spacer(),
           // 添加宠物：白色胶囊按钮（浅色圆 + 号 + 文字）
           GestureDetector(
@@ -178,16 +191,22 @@ class _Header extends StatelessWidget {
                         color: Color(0xFFF1EBEE),
                         shape: BoxShape.circle,
                       ),
-                      child: Icon(Icons.add,
-                          size: 13, color: Color(0xFF5C4A50)),
+                      child: Icon(
+                        Icons.add,
+                        size: 13,
+                        color: Color(0xFF5C4A50),
+                      ),
                     ),
                   ),
                   SizedBox(width: 6),
-                  Text('添加宠物',
-                      style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: PetPage._ink)),
+                  Text(
+                    '添加宠物',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: PetPage._ink,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -244,8 +263,11 @@ class _PetProfileCardState extends State<_PetProfileCard> {
     if (_pageCtrl?.hasClients == true && pet.pets.isNotEmpty) {
       final target = pet.selectedIndex.clamp(0, pet.pets.length - 1);
       if (_pageCtrl!.page?.round() != target) {
-        _pageCtrl!.animateToPage(target,
-            duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+        _pageCtrl!.animateToPage(
+          target,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
       }
     }
   }
@@ -268,8 +290,9 @@ class _PetProfileCardState extends State<_PetProfileCard> {
   Widget build(BuildContext context) {
     final petState = context.watch<PetState>();
     final selected = petState.selectedPet;
-    final name =
-        (selected?.nickname.isNotEmpty == true) ? selected!.nickname : '超级神虎';
+    final name = (selected?.nickname.isNotEmpty == true)
+        ? selected!.nickname
+        : '超级神虎';
     final pets = petState.pets;
     const stats = [
       (Icons.local_florist, '金渐层'),
@@ -285,17 +308,17 @@ class _PetProfileCardState extends State<_PetProfileCard> {
 
     // 大头像（当前宠物带粉色描边圆，侧边探出的不带）
     Widget bigAvatar(String h, {bool ringed = true}) => Container(
-          width: 80,
-          height: 80,
-          padding: EdgeInsets.all(ringed ? 5 : 0),
-          decoration: ringed
-              ? BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: _ring, width: 2),
-                )
-              : null,
-          child: CircleAvatar(backgroundImage: avatarImg(h)),
-        );
+      width: 80,
+      height: 80,
+      padding: EdgeInsets.all(ringed ? 5 : 0),
+      decoration: ringed
+          ? BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: _ring, width: 2),
+            )
+          : null,
+      child: CircleAvatar(backgroundImage: avatarImg(h)),
+    );
 
     // 头像轮播：3D 封面流，多宠物可左右滑动/点击切换；单宠物退化为静态大头像
     final avatarWidget = pets.isEmpty
@@ -314,8 +337,8 @@ class _PetProfileCardState extends State<_PetProfileCard> {
                   return AnimatedBuilder(
                     animation: _pageCtrl!,
                     builder: (ctx, __) {
-                      final page = _pageCtrl!.page ??
-                          petState.selectedIndex.toDouble();
+                      final page =
+                          _pageCtrl!.page ?? petState.selectedIndex.toDouble();
                       final diff = i - page;
                       // 侧边头像明显缩小（约0.6倍），贴近当前头像，还原设计稿
                       final scale = (1 - diff.abs() * 0.42).clamp(0.55, 1.0);
@@ -362,21 +385,26 @@ class _PetProfileCardState extends State<_PetProfileCard> {
                 // 名字 + 右箭头（点击进入宠物详情）
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () =>
-                      Navigator.of(context).pushNamed('/pet/detail'),
+                  onTap: () => Navigator.of(context).pushNamed('/pet/detail'),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Flexible(
-                        child: Text(name,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: PetPage._ink)),
+                        child: Text(
+                          name,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: PetPage._ink,
+                          ),
+                        ),
                       ),
-                      const Icon(Icons.chevron_right,
-                          size: 18, color: PetPage._ink),
+                      const Icon(
+                        Icons.chevron_right,
+                        size: 18,
+                        color: PetPage._ink,
+                      ),
                     ],
                   ),
                 ),
@@ -384,11 +412,11 @@ class _PetProfileCardState extends State<_PetProfileCard> {
                 // 陪伴天数行：点击进入宠物详情页
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () =>
-                      Navigator.of(context).pushNamed('/pet/detail'),
-                  child: Text('和$name的第108天',
-                      style: const TextStyle(
-                          fontSize: 13, color: PetPage._sub)),
+                  onTap: () => Navigator.of(context).pushNamed('/pet/detail'),
+                  child: Text(
+                    '和$name的第108天',
+                    style: const TextStyle(fontSize: 13, color: PetPage._sub),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 // 属性行：品种/性别/年龄/绝育/体重，均匀分布
@@ -405,11 +433,15 @@ class _PetProfileCardState extends State<_PetProfileCard> {
                               Icon(stats[i].$1, size: 15, color: _statIcon),
                               const SizedBox(width: 4),
                               Flexible(
-                                child: Text(stats[i].$2,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        fontSize: 14, color: _statText)),
+                                child: Text(
+                                  stats[i].$2,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: _statText,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
@@ -468,60 +500,82 @@ class _FeatureGrid extends StatelessWidget {
       ('assets/images/icon/m-a4.png', '冒险日记', 'AI宠物故事', Color(0xFFFAEDE8)),
     ];
     // 手动 2×2 布局：避免 GridView 嵌在滚动容器里 shrinkWrap 测高不准、撑出空隙
-    Widget tile((String, String, String, Color) it) => Container(
-          height: 76,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(it.$2,
+    Widget tile((String, String, String, Color) it, {VoidCallback? onTap}) =>
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Container(
+            height: 76,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        it.$2,
                         style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: PetPage._ink)),
-                    const SizedBox(height: 5),
-                    Text(it.$3,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: PetPage._ink,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        it.$3,
                         style: const TextStyle(
-                            fontSize: 11, color: Color(0xFFB4A8AC))),
-                  ],
+                          fontSize: 11,
+                          color: Color(0xFFB4A8AC),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: it.$4,
-                  borderRadius: BorderRadius.circular(13),
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: it.$4,
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  alignment: Alignment.center,
+                  child: Image.asset(it.$1, width: 26, height: 26),
                 ),
-                alignment: Alignment.center,
-                child: Image.asset(it.$1, width: 26, height: 26),
-              ),
-            ],
+              ],
+            ),
           ),
         );
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       child: Column(
         children: [
-          Row(children: [
-            Expanded(child: tile(items[0])),
-            const SizedBox(width: 10),
-            Expanded(child: tile(items[1])),
-          ]),
+          Row(
+            children: [
+              Expanded(
+                child: tile(
+                  items[0],
+                  onTap: () =>
+                      Navigator.of(context).pushNamed(AppRoutes.highlights),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: tile(items[1])),
+            ],
+          ),
           const SizedBox(height: 10),
-          Row(children: [
-            Expanded(child: tile(items[2])),
-            const SizedBox(width: 10),
-            Expanded(child: tile(items[3])),
-          ]),
+          Row(
+            children: [
+              Expanded(child: tile(items[2])),
+              const SizedBox(width: 10),
+              Expanded(child: tile(items[3])),
+            ],
+          ),
         ],
       ),
     );
@@ -538,15 +592,20 @@ class _CardHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Text(title,
-            style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: PetPage._ink)),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: PetPage._ink,
+          ),
+        ),
         if (count != null) ...[
           const SizedBox(width: 4),
-          Text('$count',
-              style: const TextStyle(fontSize: 12, color: Color(0xFFB9AEB2))),
+          Text(
+            '$count',
+            style: const TextStyle(fontSize: 12, color: Color(0xFFB9AEB2)),
+          ),
         ],
         const Spacer(),
         GestureDetector(
@@ -554,8 +613,10 @@ class _CardHeader extends StatelessWidget {
           onTap: () {}, // TODO: 全部列表页
           child: const Row(
             children: [
-              Text('全部',
-                  style: TextStyle(fontSize: 12, color: PetPage._pinkText)),
+              Text(
+                '全部',
+                style: TextStyle(fontSize: 12, color: PetPage._pinkText),
+              ),
               Icon(Icons.chevron_right, size: 16, color: PetPage._pinkText),
             ],
           ),
@@ -599,18 +660,24 @@ class _AdventureDiaryCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('窗台守望者',
-                        style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: PetPage._ink)),
+                    const Text(
+                      '窗台守望者',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: PetPage._ink,
+                      ),
+                    ),
                     const SizedBox(height: 4),
                     const Text(
                       '今天阳光特别好。窗外那只橘色的家伙大摇大摆走过， 小白拍了…',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                          fontSize: 12, color: PetPage._sub, height: 1.4),
+                        fontSize: 12,
+                        color: PetPage._sub,
+                        height: 1.4,
+                      ),
                     ),
                     const SizedBox(height: 10),
                     Row(
@@ -618,32 +685,48 @@ class _AdventureDiaryCard extends StatelessWidget {
                         // 标签胶囊：第12周（粉）
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: PetPage._tagBg,
                             borderRadius: BorderRadius.circular(9),
                           ),
-                          child: const Text('第12周',
-                              style: TextStyle(
-                                  fontSize: 11, color: PetPage._pinkText)),
+                          child: const Text(
+                            '第12周',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: PetPage._pinkText,
+                            ),
+                          ),
                         ),
                         const SizedBox(width: 8),
                         // 标签胶囊：已更新（绿）
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFE8F2E7),
                             borderRadius: BorderRadius.circular(9),
                           ),
-                          child: const Text('已更新',
-                              style: TextStyle(
-                                  fontSize: 11, color: Color(0xFF5E9E6A))),
+                          child: const Text(
+                            '已更新',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF5E9E6A),
+                            ),
+                          ),
                         ),
                         const Spacer(),
-                        const Text('09-28 10:30',
-                            style: TextStyle(
-                                fontSize: 13, color: Color(0xFFC0B5B9))),
+                        const Text(
+                          '09-28 10:30',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFFC0B5B9),
+                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -702,8 +785,14 @@ class _HighlightsCard extends StatelessWidget {
 
 /// 单条集锦：视频封面（播放按钮/纪实角标/时长）+ 标题 + 日期 + 标签。
 class _HighlightItem extends StatelessWidget {
-  final ({String image, String duration, String title, String date, List<String> tags})
-      data;
+  final ({
+    String image,
+    String duration,
+    String title,
+    String date,
+    List<String> tags,
+  })
+  data;
   const _HighlightItem({required this.data});
 
   @override
@@ -759,8 +848,10 @@ class _HighlightItem extends StatelessWidget {
                   color: Colors.black.withValues(alpha: 0.35),
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: const Text('纪实',
-                    style: TextStyle(fontSize: 10, color: Colors.white)),
+                child: const Text(
+                  '纪实',
+                  style: TextStyle(fontSize: 10, color: Colors.white),
+                ),
               ),
             ),
             // 右下时长
@@ -773,39 +864,50 @@ class _HighlightItem extends StatelessWidget {
                   color: Colors.black.withValues(alpha: 0.35),
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: Text(data.duration,
-                    style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w500)),
+                child: Text(
+                  data.duration,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
             ),
           ],
         ),
         const SizedBox(height: 10),
-        Text(data.title,
-            style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: PetPage._ink)),
+        Text(
+          data.title,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: PetPage._ink,
+          ),
+        ),
         const SizedBox(height: 4),
-        Text(data.date,
-            style: const TextStyle(fontSize: 11, color: Color(0xFFC0B5B9))),
+        Text(
+          data.date,
+          style: const TextStyle(fontSize: 11, color: Color(0xFFC0B5B9)),
+        ),
         const SizedBox(height: 8),
         Row(
           children: [
             for (int i = 0; i < data.tags.length; i++) ...[
               if (i > 0) const SizedBox(width: 8),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: PetPage._tagBg,
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: Text(data.tags[i],
-                    style: const TextStyle(
-                        fontSize: 10, color: Color(0xFFA97F8C))),
+                child: Text(
+                  data.tags[i],
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Color(0xFFA97F8C),
+                  ),
+                ),
               ),
             ],
           ],
@@ -840,8 +942,10 @@ class _AiBar extends StatelessWidget {
           const Icon(Icons.auto_awesome, size: 18, color: PetPage._brand),
           const SizedBox(width: 8),
           const Expanded(
-            child: Text('有什么问题都可以问我~',
-                style: TextStyle(fontSize: 13, color: PetPage._sub)),
+            child: Text(
+              '有什么问题都可以问我~',
+              style: TextStyle(fontSize: 13, color: PetPage._sub),
+            ),
           ),
           Image.asset(
             'assets/images/icon/voice-ico.png',
