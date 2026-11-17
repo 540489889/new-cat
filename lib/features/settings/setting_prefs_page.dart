@@ -98,8 +98,8 @@ class SettingPrefsPage extends StatelessWidget {
       confirmText: '退出登录',
     );
     if (ok) {
-      // 登出会同步 notifyListeners，AuthGate 随之切回登录页；
-      // 本页面随 MainShell 一起被替换，故这里不做任何 Navigator 跳转。
+      // 登出会同步 notifyListeners；AuthGate 检测到登出后会 popUntil
+      // 清掉包括本页在内的二级路由，这里不做 Navigator 跳转。
       await AuthService.instance.logout();
     }
   }

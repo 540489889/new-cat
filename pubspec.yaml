@@ -99,9 +99,9 @@ flutter:
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
 
-# 启动图标：用 assets/images/logo.png 生成各平台 launcher 图标
+# 启动图标：用 assets/images/z-logo.png 生成各平台 launcher 图标
 flutter_launcher_icons:
   android: "ic_launcher"
   ios: true
-  image_path: "assets/images/logo.png"
+  image_path: "assets/images/z-logo.png"
   remove_alpha_ios: true

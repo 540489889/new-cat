@@ -161,7 +161,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
       confirmText: '退出登录',
     );
     if (!ok) return;
-    // AuthGate 监听 AuthService，登出后自动切回登录页
+    // AuthGate 检测登出后会 popUntil 清空导航栈，回到一键登录页
     await AuthService.instance.logout();
   }
 
