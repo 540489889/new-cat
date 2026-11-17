@@ -4,6 +4,10 @@ import '../../features/login/login_page.dart';
 import '../../shared/layouts/main_shell.dart';
 import 'auth_service.dart';
 
+/// 微信授权回调（由 main.dart 的原生 MethodChannel / wechat_bridge 响应流写入，
+/// 登录页在 initState 里注册具体处理函数）。
+void Function(String code)? globalWechatCallback;
+
 /// 登录门：等待本地登录态恢复完成后，再决定展示登录页还是主框架。
 ///
 /// 参考 f-cat 的 AuthGate：恢复是异步的，首帧必须先展示等待态，

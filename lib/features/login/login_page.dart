@@ -1,12 +1,18 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:tdesign_flutter/tdesign_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:wechat_bridge/wechat_bridge.dart';
 
 import '../../config/api_config.dart';
+import '../../core/auth/auth_gate.dart' show globalWechatCallback;
 import '../../core/auth/auth_service.dart';
+import '../../core/router/app_router.dart';
 import '../../shared/widgets/status_bar_style.dart';
 
 /// 登录页：优先展示「一键登录」，手机不支持时回落为「验证码登录」，
@@ -30,6 +36,10 @@ class _LoginPageState extends State<LoginPage> {
   bool _agreed = false;
   bool _submitting = false;
 
+  /// 已处理的微信授权 code：MethodChannel 与 respStream 可能同时回调，
+  /// 同一个 code 只处理一次（微信 code 一次性，重复用必失败）。
+  String? _handledWechatCode;
+
   // 验证码登录表单
   final _phoneController = TextEditingController();
   final _codeController = TextEditingController();
@@ -39,6 +49,14 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void initState() {
     super.initState();
+    // 微信授权回调入口（main.dart 的 MethodChannel / respStream 写入）
+    globalWechatCallback = (code) {
+      // MethodChannel 与 respStream 可能先后送到同一个 code，去重避免重复请求
+      // （微信 code 一次性，第二次使用会失败并弹错误提示）。
+      if (code == _handledWechatCode) return;
+      _handledWechatCode = code;
+      _handleWechatAuth(code);
+    };
     _detectOneClickSupport();
   }
 
@@ -54,6 +72,8 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   void dispose() {
+    // 页面销毁时释放回调，避免微信授权回来后回调到已销毁的 State
+    globalWechatCallback = null;
     _countdownTimer?.cancel();
     _phoneController.dispose();
     _codeController.dispose();
@@ -166,12 +186,20 @@ class _LoginPageState extends State<LoginPage> {
                     _LoginMode.oneClick => _buildOneClickBody(token),
                     _LoginMode.code => _buildCodeBody(token),
                   },
-                  // 底部协议
+                  // 底部第三方登录图标 + 协议（图标在协议上方）
                   Positioned(
                     left: 24,
                     right: 24,
                     bottom: 24,
-                    child: _buildAgreement(token),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // 只在验证码登录模式显示第三方登录入口
+                        if (_mode == _LoginMode.code) _buildSocialLogins(),
+                        const SizedBox(height: 24),
+                        _buildAgreement(token),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -253,7 +281,8 @@ class _LoginPageState extends State<LoginPage> {
   Widget _buildCodeBody(TThemeData token) {
     // 用滚动容器包裹：键盘弹出、页面不压缩时，聚焦的输入框仍能被滚到可见区域
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      // 底部留出第三方登录图标 + 协议浮层的高度，避免输入框被遮挡
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 200),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -329,22 +358,185 @@ class _LoginPageState extends State<LoginPage> {
             label: _submitting ? '登录中...' : '验证并登录',
             onPressed: _submitting ? null : _submitCode,
           ),
-          const SizedBox(height: 20),
-          TButton(
-            variant: TButtonVariant.text,
-            onPressed: _oneClickSupported
-                ? () => _switchMode(_LoginMode.oneClick)
-                : null,
-            child: Text(
-              '一键登录',
-              style: TextStyle(
-                color: const Color(0xFF4A3F44),
-                fontSize: token.fontBodyLarge?.size ?? 16,
+        ],
+      ),
+    );
+  }
+
+  // ---------------- 第三方登录 ----------------
+
+  /// 拉起微信授权：先确认安装，同意协议后请求 code，
+  /// 结果由 main.dart 的回调转给 [_handleWechatAuth]。
+  Future<void> _handleWechatLogin() async {
+    _ensureAgreed(() async {
+      try {
+        final platform = WechatBridgePlatform.instance;
+        final installed = await platform.isInstalled();
+        if (!mounted) return;
+        if (!installed) {
+          TToast.showText('请先安装微信', context: context);
+          return;
+        }
+        await platform.auth(scope: const [WechatScope.kSNSApiUserInfo]);
+      } catch (e) {
+        if (mounted) TToast.showText('微信登录异常：$e', context: context);
+      }
+    });
+  }
+
+  /// 拿到微信返回的 code → 后端换登录态；
+  /// 若后端要求绑定手机号，则 push 绑定页，成功后返回并登录。
+  Future<void> _handleWechatAuth(String code) async {
+    if (!mounted) return;
+    setState(() => _submitting = true);
+    try {
+      final res = await AuthService.instance.loginByWechat(code);
+      if (!mounted) return;
+      if (res.isSuccess) {
+        await AuthService.instance.applyWechatLogin(LoginResult.ok(
+          accessToken: res.accessToken!,
+          refreshToken: res.refreshToken!,
+          expiresIn: res.expiresIn ?? 1800,
+          userInfo: res.userInfo,
+        ));
+        globalWechatCallback = null;
+        return; // AuthGate 监听 AuthService，登录态一变自动切首页
+      }
+
+      if (res.needsBind && res.cacheKey != null) {
+        final bound = await Navigator.of(context).pushNamed<bool>(
+          AppRoutes.bindMobile,
+          arguments: res.cacheKey,
+        );
+        if (mounted && bound == true) globalWechatCallback = null;
+        return;
+      }
+
+      TToast.showText(
+          res.message.isEmpty ? '微信登录失败' : res.message,
+          context: context);
+    } finally {
+      // 成功后本页会被 AuthGate 换掉（mounted=false），无需复位；
+      // 失败/需绑定时复位，让图标恢复可点。
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  /// 苹果登录：拉起系统授权 → 把凭证交给后端 /auth/app/login/apple。
+  /// 姓名和邮箱仅首次授权会返回，之后 Apple 不再下发。
+  Future<void> _handleAppleLogin() async {
+    _ensureAgreed(() async {
+      try {
+        final credential = await SignInWithApple.getAppleIDCredential(
+          scopes: [
+            AppleIDAuthorizationScopes.email,
+            AppleIDAuthorizationScopes.fullName,
+          ],
+        );
+        final token = credential.identityToken;
+        final code = credential.authorizationCode;
+        final user = credential.userIdentifier;
+        if (token == null ||
+            token.isEmpty ||
+            user == null ||
+            user.isEmpty) {
+          TToast.showText('苹果授权信息不完整，请重试', context: context);
+          return;
+        }
+        final res = await AuthService.instance.loginByApple(
+          identityToken: token,
+          authorizationCode: code,
+          userIdentifier: user,
+          email: credential.email,
+          givenName: credential.givenName,
+          familyName: credential.familyName,
+        );
+        if (!mounted) return;
+        if (res.isSuccess) {
+          await AuthService.instance.applyWechatLogin(res);
+          // AuthGate 监听 AuthService，登录态一变自动切首页
+        } else {
+          TToast.showText(res.message, context: context);
+        }
+      } catch (e) {
+        if (mounted) TToast.showText('苹果登录异常：$e', context: context);
+      }
+    });
+  }
+
+  /// 第三方登录图标：微信（login-1）、苹果（login-2，仅 iOS）、一键登录（login-3）。
+  Widget _buildSocialLogins() {
+    final items = <({String asset, String label, VoidCallback onTap})>[
+      (
+        asset: 'assets/images/icon/login-1.png',
+        label: '微信登录',
+        onTap: _handleWechatLogin,
+      ),
+    ];
+
+    // 苹果登录仅 iOS 支持（Sign in with Apple 无 Android 原生实现）
+    if (!kIsWeb && Platform.isIOS) {
+      items.add((
+        asset: 'assets/images/icon/login-2.png',
+        label: '苹果登录',
+        onTap: _handleAppleLogin,
+      ));
+    }
+
+    items.add((
+      asset: 'assets/images/icon/login-3.png',
+      label: '一键登录',
+      onTap: () {
+        if (_oneClickSupported) {
+          _switchMode(_LoginMode.oneClick);
+        } else {
+          TToast.showText('当前设备不支持一键登录', context: context);
+        }
+      },
+    ));
+
+    return Row(
+      children: [
+        for (final item in items)
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              // 登录进行中禁用所有图标，避免重复点击/拉起授权
+              onTap: _submitting ? null : item.onTap,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Image.asset(
+                        item.asset,
+                        width: 44,
+                        height: 44,
+                        // 等待期淡化图标，突出上面的转圈
+                        opacity: AlwaysStoppedAnimation(_submitting ? 0.35 : 1.0),
+                      ),
+                      if (_submitting)
+                        const SizedBox(
+                          width: 26,
+                          height: 26,
+                          child: CircularProgressIndicator(strokeWidth: 2.5),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    item.label,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF8C7F85),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-        ],
-      ),
+      ],
     );
   }
 

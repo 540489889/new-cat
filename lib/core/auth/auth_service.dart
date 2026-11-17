@@ -389,6 +389,142 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ==================== 微信登录 ====================
+
+  /// 微信授权登录：拿微信返回的 code 请求后端换取登录态。
+  /// 后端可能返回「需绑定手机号」（message == 'bindMobile'），
+  /// 此时由调用方跳绑定手机号页并携带 cacheKey。
+  /// 对齐参考项目 f-cat 的 AuthService.loginByWechat。
+  Future<WechatLoginResult> loginByWechat(String code) async {
+    try {
+      final uri = Uri.parse('${ApiConfig.baseUrl}/auth/app/login/weixin')
+          .replace(queryParameters: {'code': code});
+      final response = await http
+          .post(uri, headers: _jsonHeaders)
+          .timeout(const Duration(seconds: ApiConfig.connectTimeout));
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 && _isSuccess(body['code'])) {
+        final data = body['data'] as Map<String, dynamic>?;
+        if (data != null) {
+          if (data['message'] == 'bindMobile') {
+            return WechatLoginResult.needsBind(
+                cacheKey: data['cacheKey'] as String? ?? '');
+          }
+          return WechatLoginResult.ok(
+            accessToken: data['access_token'] as String? ?? '',
+            refreshToken: data['refresh_token'] as String? ?? '',
+            expiresIn: _toInt(data['expires_in']) ?? 1800,
+            userInfo: data['memberInfo'] as Map<String, dynamic>?,
+          );
+        }
+      }
+      return WechatLoginResult.fail(body['msg'] ?? '微信登录失败');
+    } catch (e) {
+      return WechatLoginResult.fail('网络异常：$e');
+    }
+  }
+
+  /// 微信登录后绑定手机号：cacheKey 来自 [loginByWechat] 的 needsBind 结果。
+  Future<LoginResult> bindMobile({
+    required String cacheKey,
+    required String mobile,
+    required String code,
+  }) async {
+    try {
+      final uri = Uri.parse('${ApiConfig.baseUrl}/auth/app/login/bindMobile');
+      final response = await http
+          .post(
+            uri,
+            headers: _jsonHeaders,
+            body: jsonEncode({
+              'cacheKey': cacheKey,
+              'mobile': mobile,
+              'code': code,
+            }),
+          )
+          .timeout(const Duration(seconds: ApiConfig.connectTimeout));
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 && _isSuccess(body['code'])) {
+        final data = body['data'] as Map<String, dynamic>?;
+        if (data != null) {
+          return LoginResult.ok(
+            accessToken: data['access_token'] as String? ?? '',
+            refreshToken: data['refresh_token'] as String? ?? '',
+            expiresIn: _toInt(data['expires_in']) ?? 1800,
+            userInfo: data['memberInfo'] as Map<String, dynamic>?,
+          );
+        }
+      }
+      return LoginResult.fail(body['msg'] ?? '绑定手机号失败');
+    } catch (e) {
+      return LoginResult.fail('网络异常：$e');
+    }
+  }
+
+  // ==================== 苹果登录 ====================
+
+  /// 苹果授权登录：把 Apple 返回的凭证交给后端校验并换取登录态。
+  /// 接口：POST /auth/app/login/apple
+  /// 仅在 iOS 且系统 >= 13 时可调用（Android 无 Sign in with Apple 原生弹窗）。
+  Future<LoginResult> loginByApple({
+    required String identityToken,
+    required String authorizationCode,
+    required String userIdentifier,
+    String? email,
+    String? givenName,
+    String? familyName,
+  }) async {
+    try {
+      final uri = Uri.parse('${ApiConfig.baseUrl}/auth/app/login/apple');
+      final response = await http
+          .post(
+            uri,
+            headers: _jsonHeaders,
+            body: jsonEncode({
+              'identityToken': identityToken,
+              'authorizationCode': authorizationCode,
+              'userIdentifier': userIdentifier,
+              if (email != null && email.isNotEmpty) 'email': email,
+              if (givenName != null && givenName.isNotEmpty)
+                'givenName': givenName,
+              if (familyName != null && familyName.isNotEmpty)
+                'familyName': familyName,
+            }),
+          )
+          .timeout(const Duration(seconds: ApiConfig.connectTimeout));
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 && _isSuccess(body['code'])) {
+        final data = body['data'] as Map<String, dynamic>?;
+        if (data != null) {
+          return LoginResult.ok(
+            accessToken: data['access_token'] as String? ?? '',
+            refreshToken: data['refresh_token'] as String? ?? '',
+            expiresIn: _toInt(data['expires_in']) ?? 1800,
+            userInfo: data['memberInfo'] as Map<String, dynamic>?,
+          );
+        }
+      }
+      return LoginResult.fail(body['msg'] ?? '苹果登录失败');
+    } catch (e) {
+      return LoginResult.fail('网络异常：$e');
+    }
+  }
+
+  /// 微信登录成功后落地登录态（令牌 + 本地用户信息 + 通知监听者）。
+  Future<void> applyWechatLogin(LoginResult result) async {
+    await _persistToken(
+      result.accessToken!,
+      result.refreshToken!,
+      expiresIn: result.expiresIn ?? 1800,
+    );
+    final info = result.userInfo;
+    if (info != null && info.isNotEmpty) {
+      await saveUserInfo(info);
+    }
+    _loggedIn = true;
+    notifyListeners();
+  }
+
   /// 退出登录（清除本地登录态）。
   Future<void> logout() async {
     // 先同步置为未登录并通知：让 AuthGate 立即跳转登录页、
@@ -427,4 +563,58 @@ class AuthService extends ChangeNotifier {
       // 插件不可用时忽略本地持久化
     }
   }
+}
+
+/// 微信授权登录结果（对齐 f-cat）：
+/// 成功拿到令牌 / 需要绑定手机号 / 失败。
+class WechatLoginResult {
+  final bool isSuccess;
+  final bool needsBind;
+  final String message;
+  final String? cacheKey;
+  final String? accessToken;
+  final String? refreshToken;
+  final int? expiresIn;
+  final Map<String, dynamic>? userInfo;
+
+  WechatLoginResult._({
+    required this.isSuccess,
+    required this.needsBind,
+    required this.message,
+    this.cacheKey,
+    this.accessToken,
+    this.refreshToken,
+    this.expiresIn,
+    this.userInfo,
+  });
+
+  factory WechatLoginResult.ok({
+    required String accessToken,
+    required String refreshToken,
+    int expiresIn = 1800,
+    Map<String, dynamic>? userInfo,
+  }) =>
+      WechatLoginResult._(
+        isSuccess: true,
+        needsBind: false,
+        message: '登录成功',
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+        expiresIn: expiresIn,
+        userInfo: userInfo,
+      );
+
+  factory WechatLoginResult.needsBind({required String cacheKey}) =>
+      WechatLoginResult._(
+        isSuccess: false,
+        needsBind: true,
+        message: 'bindMobile',
+        cacheKey: cacheKey,
+      );
+
+  factory WechatLoginResult.fail(String message) => WechatLoginResult._(
+        isSuccess: false,
+        needsBind: false,
+        message: message,
+      );
 }

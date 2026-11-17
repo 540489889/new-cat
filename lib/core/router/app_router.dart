@@ -1,6 +1,7 @@
 import 'package:tdesign_flutter/tdesign_flutter.dart';
 
 import '../../features/components/components_page.dart';
+import '../../features/login/bind_mobile_page.dart';
 import '../../features/demo/demo_detail_page.dart';
 import '../../features/member/about_us_page.dart';
 import '../../features/member/news_page.dart';
@@ -17,6 +18,7 @@ class AppRoutes {
   AppRoutes._();
 
   static const String root = '/';
+  static const String bindMobile = '/login/bind-mobile';
   static const String demoDetail = '/demo/detail';
   static const String components = '/components';
   static const String petDetail = '/pet/detail';
@@ -36,6 +38,14 @@ class AppRouter {
       case AppRoutes.root:
         return MaterialPageRoute(
           builder: (_) => const AuthGate(),
+          settings: settings,
+        );
+      case AppRoutes.bindMobile:
+        final cacheKey = settings.arguments is String
+            ? settings.arguments! as String
+            : '';
+        return MaterialPageRoute(
+          builder: (_) => BindMobilePage(cacheKey: cacheKey),
           settings: settings,
         );
       case AppRoutes.demoDetail:

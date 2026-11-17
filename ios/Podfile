@@ -31,6 +31,10 @@ flutter_ios_podfile_setup
 
 target 'Runner' do
   use_frameworks!
+  use_modular_headers!
+
+  # 微信 SDK（wechat_bridge 插件依赖）
+  pod 'WechatOpenSDK-Full', :git => 'https://github.com/liujunliuhong/WechatOpenSDK.git', :tag => '1.9.2-0'
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
