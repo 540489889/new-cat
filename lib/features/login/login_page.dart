@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io' show Platform;
+import 'dart:ui' as ui;
 
+import 'package:ali_auth/ali_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -16,8 +18,9 @@ import '../../core/auth/auth_service.dart';
 import '../../core/router/app_router.dart';
 import '../../shared/widgets/status_bar_style.dart';
 
-/// 登录页：优先展示「一键登录」，手机不支持时回落为「验证码登录」，
-/// 两态可通过底部链接互相切换。
+/// 登录页：进页面自动拉起本机号码一键登录（阿里云 AliAuth），
+/// 失败 / 用户取消 / 点「更多登录方式」则回落到验证码登录页。
+/// 微信、苹果登录作为底部第三方入口常驻。
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -25,15 +28,7 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-enum _LoginMode { oneClick, code }
-
 class _LoginPageState extends State<LoginPage> {
-  /// 能力探测完成前为 null，展示加载态。
-  _LoginMode? _mode;
-
-  /// 当前手机是否支持一键登录（探测结果）。
-  bool _oneClickSupported = false;
-
   bool _agreed = false;
   bool _submitting = false;
 
@@ -43,10 +38,27 @@ class _LoginPageState extends State<LoginPage> {
   String? _submittingSocial;
   static const _wechatAsset = 'assets/images/icon/login-1.png';
   static const _appleAsset = 'assets/images/icon/login-2.png';
+  static const _oneClickAsset = 'assets/images/icon/login-3.png';
 
   /// 已处理的微信授权 code：MethodChannel 与 respStream 可能同时回调，
   /// 同一个 code 只处理一次（微信 code 一次性，重复用必失败）。
   String? _handledWechatCode;
+
+  /// 一键登录是否已完成（拿到 token 后走后端成功），避免超时回落抢跑。
+  bool _mobileAuthDone = false;
+
+  /// 当前设备是否支持一键登录（SIM 卡为三大运营商 + 有网络 + 插件可用）。
+  /// 默认 false：检测完成前不显示一键登录入口、不自动拉起。
+  bool _oneClickSupported = false;
+
+  /// AliAuth 无响应兜底：超时后自动回落到验证码登录。
+  Timer? _aliAuthTimeout;
+
+  // SK 凭证：与 f-cat 共用（同包名 pet.jolipaw.app + 同签名）。
+  static const String _androidSk =
+      'hlYZMVTt+HRwZo7YYBmiY3Mmddtmhaim6zC9uUmd7eAdSAuvtB7l7aSPySwDgDWmGmRdBueHGT6gvrJ41Ed1gM8ZZ3Tz9P5vq7LxbWQdgAqhDUQPuPq5lXDJiUI5ya0Vpa9GH/t5mwi1UwPByAhLJgSngcvqIM0Ppwbb4glSBuDLGabsqx36554sOxc6smvbQPHK+CLMR45d68h4HAZfwD2SSQRMrk6sZIVAZTIXexv6u3ribn1VVIlmjtxFT4VgsqdFrxGytwPhoWU8Dt4WpI4JWqXFgTM0qSWdcWcpJ8o=';
+  static const String _iosSk =
+      'UVPdnrl0/TshSU81f/ttUi9NPe2juqKl6820ufMR/3F96IVmhX7U5onkMxO5Lp5z29CFfDZkMvRVXzyRjj+TGsfEs56+LVAAFOFrUQ4nLqcn2cmntgSR4WvNMVf/JbxeZLuwEck3uI6A7foHfUqtndlpdRZTMJA/DgTMhue+TeEtzMwdqCpk54w9tP7ysUfm4Wo+s/g48UBAj29G3KltyF+AjC5x11spdtPsoJQwr9rEs/F8AVAKI1pTms22qibv';
 
   // 验证码登录表单
   final _phoneController = TextEditingController();
@@ -66,23 +78,47 @@ class _LoginPageState extends State<LoginPage> {
       _handledWechatCode = code;
       _handleWechatAuth(code);
     });
+
+    // 一键登录：先检测设备是否支持（SIM 运营商 + 网络 + 插件可用），
+    // 支持才注册监听、显示入口并自动拉起；否则静默只用验证码登录。
     _detectOneClickSupport();
   }
 
+  /// 检测当前设备是否支持一键登录：
+  /// 1) 必须是移动端且插件可用；
+  /// 2) getCurrentCarrierName 返回中国移动/联通/电信之一（即有可用 SIM）；
+  /// 3) checkCellularDataEnable 报告有网络。
+  /// 任一环节异常（如插件未注册 MissingPluginException）都视为不支持。
   Future<void> _detectOneClickSupport() async {
-    final supported = await AuthService.instance.isOneClickSupported();
-    if (!mounted) return;
-    setState(() {
-      // 手机不支持一键登录时，隐藏一键登录入口，直接进验证码登录
-      _oneClickSupported = supported;
-      _mode = supported ? _LoginMode.oneClick : _LoginMode.code;
-    });
+    if (kIsWeb) return;
+    try {
+      final carrier = await AliAuth.getCurrentCarrierName();
+      final network = await AliAuth.checkCellularDataEnable;
+      final hasCarrier = const ['中国移动', '中国联通', '中国电信']
+          .contains(carrier.trim());
+      // 网络检测仅作参考：Android 返回 Map{code:0|1}，iOS 格式可能不同；
+      // 一键登录在有可用 SIM（三大运营商）时即使 WiFi 也能用，故 SIM 为准，
+      // 网络字段只在明确拿到 code 且为 0（无网络）时才否决。
+      final networkCode = network is Map ? network['code'] : null;
+      final noNetwork = networkCode == 0 || networkCode == '0';
+      final supported = hasCarrier && !noNetwork;
+      debugPrint('一键登录能力检测: carrier=$carrier, network=$network, supported=$supported');
+      if (!mounted) return;
+      setState(() => _oneClickSupported = supported);
+      if (supported) {
+        _setupAliAuthListener();
+        _scheduleAutoOneClick();
+      }
+    } catch (e) {
+      // 插件不可用/检测失败：不支持一键登录，保持验证码登录
+      debugPrint('一键登录能力检测失败，隐藏入口: $e');
+    }
   }
 
   @override
   void dispose() {
-    // 页面销毁时释放回调，避免微信授权回来后回调到已销毁的 State
     unregisterWechatCallback();
+    _aliAuthTimeout?.cancel();
     _countdownTimer?.cancel();
     _phoneController.dispose();
     _codeController.dispose();
@@ -92,15 +128,219 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
+  // ---------------- 一键登录（阿里云 AliAuth） ----------------
+
+  /// 注册一键登录事件回调：
+  /// 600000=拿到运营商 token；700001/600015 等=点更多/取消→回落；
+  /// 600011/600013/600014/600024 等=失败→回落。
+  void _setupAliAuthListener() {
+    if (kIsWeb) return;
+    try {
+      AliAuth.loginListen(
+        onEvent: (event) {
+          if (!mounted || _mobileAuthDone) return;
+          final code = event['code']?.toString();
+          debugPrint('AliAuth event: $event');
+          if (code == '600000' && event['data'] != null) {
+            final raw = event['data'];
+            final token = raw is String
+                ? raw
+                : (raw is Map ? raw['token'] as String? : null);
+            if (token != null && token.isNotEmpty) {
+              _aliAuthTimeout?.cancel();
+              _handleMobileAuth(token);
+            }
+            return;
+          }
+          if (code == '700001' ||
+              code == '700002' ||
+              code == '700005' ||
+              code == '600008' ||
+              code == '600015') {
+            _fallbackToCodeLogin();
+            return;
+          }
+          if (code == '600011' ||
+              code == '600013' ||
+              code == '600014' ||
+              code == '600024') {
+            _fallbackToCodeLogin();
+          }
+        },
+        onError: (error) {
+          debugPrint('AliAuth listen error: $error');
+        },
+      );
+    } catch (e) {
+      // flutter test / 桌面端无原生插件时忽略，不影响验证码登录
+      debugPrint('AliAuth.loginListen 不可用: $e');
+    }
+  }
+
+  /// 进页面延迟自动拉起一键登录授权页。
+  void _scheduleAutoOneClick() {
+    if (kIsWeb) return;
+    Future<void>.delayed(const Duration(milliseconds: 300), () {
+      if (mounted && !_mobileAuthDone) _handleAliAuth(auto: true);
+    });
+  }
+
+  /// 启动 AliAuth 超时保护：8 秒无结果自动回落验证码登录。
+  void _startAliAuthTimeout() {
+    _aliAuthTimeout?.cancel();
+    _aliAuthTimeout = Timer(const Duration(seconds: 8), () {
+      if (mounted && !_mobileAuthDone) {
+        debugPrint('AliAuth 超时，自动切换到验证码登录');
+        _fallbackToCodeLogin();
+      }
+    });
+  }
+
+  /// 回落到验证码登录页：关闭授权页 + 清转圈。
+  void _fallbackToCodeLogin() {
+    _aliAuthTimeout?.cancel();
+    if (mounted) setState(() => _submittingSocial = null);
+    // quitPage 返回 Future，异常是异步抛出的，必须 unawaited().catchError
+    // 吞掉，否则无原生插件时 MissingPluginException 会变成未捕获异常崩溃。
+    AliAuth.quitPage().catchError((Object e) {
+      debugPrint('AliAuth.quitPage 不可用（忽略）: $e');
+    });
+  }
+
+  /// 构造一键登录授权页 UI 参数（对齐 f-cat buildLoginModel）。
+  AliAuthModel _buildLoginModel() {
+    final screenHeight =
+        (ui.PlatformDispatcher.instance.views.first.physicalSize.height /
+                ui.PlatformDispatcher.instance.views.first.devicePixelRatio)
+            .floor();
+    final int dialogHeight = (screenHeight * 0.6).floor();
+    final int unit = dialogHeight ~/ 8;
+    final thirdMap = {
+      'width': -1,
+      'height': -1,
+      'top': unit * 4 + 40,
+      'space': 20,
+      'size': 15,
+      'color': '#616161',
+      'itemWidth': 40,
+      'itemHeight': 40,
+    };
+    return AliAuthModel(
+      _androidSk,
+      _iosSk,
+      isDebug: false,
+      autoQuitPage: true,
+      pageType: PageType.dialogBottom,
+      statusBarColor: '#00000000',
+      bottomNavColor: '#FFFFFF',
+      lightColor: true,
+      isStatusBarHidden: false,
+      statusBarUIFlag: UIFAG.systemUiFalgLayoutFullscreen,
+      navHidden: true,
+      logoOffsetY: unit ~/ 2,
+      logoImgPath: 'assets/images/logo.png',
+      logoHidden: false,
+      logoWidth: 70,
+      logoHeight: 70,
+      logoScaleType: ScaleType.fitXy,
+      numberColor: '#333333',
+      numberSize: 18,
+      numFieldOffsetY: unit * 2,
+      numberFieldOffsetX: 0,
+      numberLayoutGravity: Gravity.centerHorizntal,
+      logBtnText: '本机号码一键登录',
+      logBtnTextSize: 16,
+      logBtnTextColor: '#FFFFFF',
+      logBtnHeight: 96,
+      logBtnOffsetY: unit * 3,
+      logBtnOffsetX: 0,
+      logBtnMarginLeftAndRight: 20,
+      logBtnLayoutGravity: Gravity.centerHorizntal,
+      logBtnToastHidden: false,
+      logBtnBackgroundPath: 'assets/images/btn-bg.png',
+      switchAccText: '验证码登录',
+      switchOffsetY: (unit * 4.8).round(),
+      switchOffsetY_B: -1,
+      switchAccTextColor: '#666666',
+      switchAccTextSize: 16,
+      protocolOneName: '《用户协议》',
+      protocolOneURL: ApiConfig.userAgreementUrl,
+      protocolTwoName: '《隐私政策》',
+      protocolTwoURL: ApiConfig.privacyUrl,
+      protocolCustomColor: '#FF7A47',
+      protocolColor: '#999999',
+      protocolLayoutGravity: Gravity.centerHorizntal,
+      protocolGravity: Gravity.centerHorizntal,
+      privacyTextSize: 12,
+      privacyMargin: 28,
+      privacyBefore: '我已阅读并同意',
+      privacyEnd: '',
+      vendorPrivacyPrefix: '《',
+      vendorPrivacySuffix: '》',
+      checkBoxWidth: 15,
+      checkBoxHeight: 15,
+      checkboxHidden: false,
+      privacyState: false,
+      dialogHeight: dialogHeight,
+      dialogBottom: true,
+      dialogCornerRadiusArray: [10, 10, 0, 0],
+      dialogAlpha: 0.4,
+      pageBackgroundRadius: 10,
+      customThirdView: CustomThirdView.fromJson(thirdMap),
+      pageBackgroundPath: '',
+    );
+  }
+
+  /// 拉起一键登录授权页。auto=true 为进页面自动拉起（SDK 内自带协议勾选）。
+  Future<void> _handleAliAuth({bool auto = false}) async {
+    if (!auto) {
+      _ensureAgreed(() => _launchAliAuth());
+    } else {
+      _launchAliAuth();
+    }
+  }
+
+  Future<void> _launchAliAuth() async {
+    if (!mounted) return;
+    setState(() => _submittingSocial = _oneClickAsset);
+    _startAliAuthTimeout();
+    try {
+      await AliAuth.initSdk(_buildLoginModel());
+      await AliAuth.login();
+    } catch (e) {
+      debugPrint('一键登录拉起失败: $e');
+      _fallbackToCodeLogin();
+    }
+  }
+
+  /// 拿到运营商 token → 后端换登录态。
+  Future<void> _handleMobileAuth(String token) async {
+    if (!mounted) return;
+    setState(() => _submittingSocial = _oneClickAsset);
+    try {
+      final res = await AuthService.instance.loginByMobileAuth(token);
+      if (!mounted) return;
+      if (res.isSuccess) {
+        _mobileAuthDone = true;
+        _aliAuthTimeout?.cancel();
+        await AuthService.instance.applyMobileAuthLogin(res);
+        // AuthGate 监听 AuthService，登录态一变自动切首页
+      } else {
+        TToast.showText(res.message, context: context);
+        _fallbackToCodeLogin();
+      }
+    } catch (e) {
+      if (mounted) TToast.showText('一键登录异常：$e', context: context);
+      _fallbackToCodeLogin();
+    }
+  }
+
+  // ---------------- 验证码登录 ----------------
+
   bool get _phoneValid =>
       RegExp(r'^1\d{10}$').hasMatch(_phoneController.text.trim());
   bool get _codeValid =>
       RegExp(r'^\d{4,6}$').hasMatch(_codeController.text.trim());
-
-  void _switchMode(_LoginMode mode) {
-    FocusScope.of(context).unfocus();
-    setState(() => _mode = mode);
-  }
 
   void _ensureAgreed(VoidCallback submit) {
     if (_agreed) {
@@ -110,22 +350,12 @@ class _LoginPageState extends State<LoginPage> {
     _showProtocolDialog(onAgree: submit);
   }
 
-  Future<void> _submitOneClick() async {
-    if (_submitting) return;
-    _ensureAgreed(() async {
-      setState(() => _submitting = true);
-      await AuthService.instance.loginWithOneClick();
-    });
-  }
-
   Future<void> _submitCode() async {
     if (_submitting) return;
-    // 先校验手机号与验证码格式
     if (!_phoneValid || !_codeValid) {
       TToast.showText('请输入正确的手机号和验证码', context: context);
       return;
     }
-    // 最后校验是否同意协议：未勾选则弹确认框，确认后再继续登录
     _ensureAgreed(() async {
       setState(() => _submitting = true);
       final res = await AuthService.instance.loginByMobileCode(
@@ -134,8 +364,6 @@ class _LoginPageState extends State<LoginPage> {
       );
       if (!mounted) return;
       setState(() => _submitting = false);
-      // 成功时 AuthService 已置 loggedIn，AuthGate 会自动切到首页；
-      // 失败则停留在登录页并提示
       if (!res.isSuccess) {
         TToast.showText(res.message, context: context);
       }
@@ -174,13 +402,10 @@ class _LoginPageState extends State<LoginPage> {
     return StatusBarStyle(
       child: Scaffold(
         backgroundColor: Colors.white,
-        // 键盘弹出时不压缩页面高度，避免把底部协议区顶上来（键盘浮于其上覆盖）
         resizeToAvoidBottomInset: false,
         body: Stack(
           fit: StackFit.expand,
           children: [
-            // 设计稿同款背景图（渐变 + 圆弧 + J 形/爪印装饰）
-            // 宽度铺满、高度按比例自适应，不拉伸；锚定顶部
             Image.asset(
               'assets/images/logo-bg.png',
               fit: BoxFit.fitWidth,
@@ -189,13 +414,8 @@ class _LoginPageState extends State<LoginPage> {
             SafeArea(
               child: Stack(
                 children: [
-                  // 主体内容
-                  switch (_mode) {
-                    null => const Center(child: CircularProgressIndicator()),
-                    _LoginMode.oneClick => _buildOneClickBody(token),
-                    _LoginMode.code => _buildCodeBody(token),
-                  },
-                  // 底部第三方登录图标 + 协议（图标在协议上方）
+                  // 验证码登录为主页面（一键登录授权页由 SDK 覆盖其上）
+                  _buildCodeBody(token),
                   Positioned(
                     left: 24,
                     right: 24,
@@ -203,8 +423,7 @@ class _LoginPageState extends State<LoginPage> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // 只在验证码登录模式显示第三方登录入口
-                        if (_mode == _LoginMode.code) _buildSocialLogins(),
+                        _buildSocialLogins(),
                         const SizedBox(height: 24),
                         _buildAgreement(token),
                       ],
@@ -219,78 +438,8 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ---------------- 一键登录 ----------------
-
-  Widget _buildOneClickBody(TThemeData token) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        children: [
-          const SizedBox(height: 96),
-          // App Logo（占位，替换为真实 Logo 资源）
-          Container(
-            width: 88,
-            height: 88,
-            decoration: BoxDecoration(
-              color: token.brandColor,
-              borderRadius: BorderRadius.circular(24),
-            ),
-            alignment: Alignment.center,
-            child: const Text(
-              'J',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 44,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          const SizedBox(height: 28),
-          Text(
-            AuthService.instance.maskedPhone,
-            style: TextStyle(
-              color: const Color(0xFF4A3F44),
-              fontSize: token.fontTitleLarge?.size ?? 20,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            '中国移动提供认证服务',
-            style: TextStyle(
-              color: const Color(0xFFB29AA5),
-              fontSize: token.fontBodySmall?.size ?? 12,
-            ),
-          ),
-          const Spacer(),
-          _PrimaryButton(
-            label: _submitting ? '登录中...' : '本机号码一键登录',
-            onPressed: _submitting ? null : _submitOneClick,
-          ),
-          const SizedBox(height: 20),
-          TButton(
-            variant: TButtonVariant.text,
-            onPressed: () => _switchMode(_LoginMode.code),
-            child: Text(
-              '验证码登录',
-              style: TextStyle(
-                color: const Color(0xFF4A3F44),
-                fontSize: token.fontBodyLarge?.size ?? 16,
-              ),
-            ),
-          ),
-          const SizedBox(height: 88),
-        ],
-      ),
-    );
-  }
-
-  // ---------------- 验证码登录 ----------------
-
   Widget _buildCodeBody(TThemeData token) {
-    // 用滚动容器包裹：键盘弹出、页面不压缩时，聚焦的输入框仍能被滚到可见区域
     return SingleChildScrollView(
-      // 底部留出第三方登录图标 + 协议浮层的高度，避免输入框被遮挡
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 200),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -374,8 +523,6 @@ class _LoginPageState extends State<LoginPage> {
 
   // ---------------- 第三方登录 ----------------
 
-  /// 拉起微信授权：先确认安装，同意协议后请求 code，
-  /// 结果由 main.dart 的回调转给 [_handleWechatAuth]。
   Future<void> _handleWechatLogin() async {
     _ensureAgreed(() async {
       try {
@@ -393,8 +540,6 @@ class _LoginPageState extends State<LoginPage> {
     });
   }
 
-  /// 拿到微信返回的 code → 后端换登录态；
-  /// 若后端要求绑定手机号，则 push 绑定页，成功后返回并登录。
   Future<void> _handleWechatAuth(String code) async {
     if (!mounted) return;
     setState(() => _submittingSocial = _wechatAsset);
@@ -409,9 +554,8 @@ class _LoginPageState extends State<LoginPage> {
           userInfo: res.userInfo,
         ));
         unregisterWechatCallback();
-        return; // AuthGate 监听 AuthService，登录态一变自动切首页
+        return;
       }
-
       if (res.needsBind && res.cacheKey != null) {
         final bound = await Navigator.of(context).pushNamed<bool>(
           AppRoutes.bindMobile,
@@ -420,19 +564,14 @@ class _LoginPageState extends State<LoginPage> {
         if (mounted && bound == true) unregisterWechatCallback();
         return;
       }
-
       TToast.showText(
           res.message.isEmpty ? '微信登录失败' : res.message,
           context: context);
     } finally {
-      // 成功后本页会被 AuthGate 换掉（mounted=false），无需复位；
-      // 失败/需绑定时复位，让图标恢复可点。
       if (mounted) setState(() => _submittingSocial = null);
     }
   }
 
-  /// 苹果登录：拉起系统授权 → 把凭证交给后端 /auth/app/login/apple。
-  /// 姓名和邮箱仅首次授权会返回，之后 Apple 不再下发。
   Future<void> _handleAppleLogin() async {
     _ensureAgreed(() async {
       if (!mounted) return;
@@ -465,53 +604,43 @@ class _LoginPageState extends State<LoginPage> {
         if (!mounted) return;
         if (res.isSuccess) {
           await AuthService.instance.applyWechatLogin(res);
-          // AuthGate 监听 AuthService，登录态一变自动切首页
         } else {
           TToast.showText(res.message, context: context);
         }
       } catch (e) {
         if (mounted) TToast.showText('苹果登录异常：$e', context: context);
       } finally {
-        // 成功后本页被 AuthGate 换掉（mounted=false），无需复位；
-        // 失败/取消时复位，让苹果图标恢复可点。
         if (mounted) setState(() => _submittingSocial = null);
       }
     });
   }
 
-  /// 第三方登录图标：微信（login-1）、苹果（login-2，仅 iOS）、一键登录（login-3）。
   Widget _buildSocialLogins() {
-    // 顺序：一键登录 → 微信 → 苹果（一键登录放最左）。
-    final items = <({String asset, String label, VoidCallback onTap})>[
-      (
-        asset: 'assets/images/icon/login-3.png',
-        label: '一键登录',
-        onTap: () {
-          if (_oneClickSupported) {
-            _switchMode(_LoginMode.oneClick);
-          } else {
-            TToast.showText('当前设备不支持一键登录', context: context);
-          }
-        },
-      ),
-      (
-        asset: 'assets/images/icon/login-1.png',
-        label: '微信登录',
-        onTap: _handleWechatLogin,
-      ),
-    ];
+    final items = <({String asset, String label, VoidCallback onTap})>[];
 
-    // 苹果登录仅 iOS 支持（Sign in with Apple 无 Android 原生实现），排最后
+    // 仅在检测到设备支持时显示一键登录入口
+    if (_oneClickSupported) {
+      items.add((
+        asset: _oneClickAsset,
+        label: '一键登录',
+        onTap: () => _handleAliAuth(),
+      ));
+    }
+
+    items.add((
+      asset: _wechatAsset,
+      label: '微信登录',
+      onTap: _handleWechatLogin,
+    ));
+
     if (!kIsWeb && Platform.isIOS) {
       items.add((
-        asset: 'assets/images/icon/login-2.png',
+        asset: _appleAsset,
         label: '苹果登录',
         onTap: _handleAppleLogin,
       ));
     }
 
-    // 固定图标宽度 + 固定间距并居中：安卓只有 2 个图标时也不会被
-    // Expanded 均分整行而撑出巨大空隙，iOS 3 个图标时间距保持一致。
     const itemWidth = 68.0;
     const spacing = 8.0;
     return Row(
@@ -519,8 +648,6 @@ class _LoginPageState extends State<LoginPage> {
       children: [
         for (final item in items)
           Builder(builder: (context) {
-            // 只有正在请求的那个图标转圈；有任意登录在进行时禁用全部点击，
-            // 避免重复拉起授权。
             final busy = _submittingSocial == item.asset;
             return SizedBox(
               width: itemWidth,
@@ -567,7 +694,6 @@ class _LoginPageState extends State<LoginPage> {
 
   // ---------------- 协议 ----------------
 
-  // 协议链接：name + 跳转地址（无地址的用占位提示）
   static const List<({String name, String? url})> _agreementLinks = [
     (name: '《中国移动认证服务条款》', url: null),
     (name: '《用户协议》', url: ApiConfig.userAgreementUrl),
@@ -596,8 +722,6 @@ class _LoginPageState extends State<LoginPage> {
         TToast.showText('无法打开链接', context: context);
         return;
       }
-      // platformDefault：移动端用内置浏览器、桌面端用系统浏览器，避免
-      // inAppBrowserView 在桌面不支持时静默返回 false 导致“点击没反应”
       final launched = await launchUrl(uri, mode: LaunchMode.platformDefault);
       if (!launched) {
         TToast.showText('无法打开链接', context: context);
@@ -607,14 +731,11 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  /// 未勾选协议时弹出的确认框（基于 tdesign TDialog）：
-  /// 「不同意」关闭；「同意并继续」勾选协议并执行后续登录动作。
   void _showProtocolDialog({VoidCallback? onAgree}) {
     final brand = context.tTheme.brandColor;
     TDialog.show<void>(
       context,
       dialog: TDialog(
-        // 暂时去掉标题（预览无标题样式）
         content: RichText(
           textAlign: TextAlign.left,
           text: TextSpan(
@@ -640,9 +761,7 @@ class _LoginPageState extends State<LoginPage> {
           ),
         ),
         actions: [
-          const TDialogAction(
-            child: Text('不同意'),
-          ),
+          const TDialogAction(child: Text('不同意')),
           TDialogAction(
             child: const Text('同意并继续'),
             role: TDialogActionRole.primary,
@@ -774,7 +893,6 @@ class _PillTextField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final token = context.tTheme;
-    // 白色胶囊输入框：保留背景，去掉底部边框（仅用圆角底色区分输入区）
     return Container(
       height: 52,
       padding: const EdgeInsets.symmetric(horizontal: 18),
@@ -798,8 +916,6 @@ class _PillTextField extends StatelessWidget {
               decoration: InputDecoration(
                 isCollapsed: true,
                 counterText: '',
-                // 显式置空各态边框：tdesign 主题默认注入了下划线边框，
-                // 仅写 border: none 会被主题默认值覆盖
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
@@ -818,4 +934,3 @@ class _PillTextField extends StatelessWidget {
     );
   }
 }
-

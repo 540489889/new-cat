@@ -64,6 +64,15 @@ android {
 dependencies {
     // 微信 SDK（仅编译期引用，运行时由 wechat_bridge 插件提供）
     compileOnly("com.tencent.mm.opensdk:wechat-sdk-android:6.8.0")
+
+    // 阿里云一键登录 AAR（本地依赖，直接引用 ali_auth 插件的 libs 目录）。
+    // ali_auth 插件自身对这些 AAR 是 compileOnly，必须由 app 层 implementation，
+    // 否则运行时缺类。
+    implementation(files(
+        "../../local_patches/ali_auth/android/libs/auth_number_product-2.14.19-release.aar",
+        "../../local_patches/ali_auth/android/libs/logger-2.2.2-release.aar",
+        "../../local_patches/ali_auth/android/libs/main-2.2.3-release.aar"
+    ))
 }
 
 kotlin {

@@ -22,29 +22,28 @@ void main() {
     expect(AppTheme.dark.brightness, Brightness.dark);
   });
 
-  Future<void> loginThroughOneClick(WidgetTester tester) async {
-    await tester.pumpWidget(const App());
-    // 能力探测页有转圈动画，pumpAndSettle 可推进至探测完成（mock 600ms）
-    await tester.pumpAndSettle();
-
-    // 勾选协议后一键登录
-    await tester.tap(find.byKey(const ValueKey('agreement-checkbox')));
-    await tester.pump();
-    await tester.tap(find.text('本机号码一键登录'));
-    // mock 登录延时是纯 Timer，无帧调度，需显式推进时钟
-    await tester.pump(const Duration(milliseconds: 900));
-    await tester.pumpAndSettle();
+  /// 直接走 AuthService 落地登录态（等价于一键登录 token 换登录态成功后的
+  /// apply 步骤），避免真机 AliAuth 插件 / 网络请求干扰 UI 测试。
+  Future<void> loginForTest() async {
+    await AuthService.instance.applyMobileAuthLogin(LoginResult.ok(
+      accessToken: 'test-access-token',
+      refreshToken: 'test-refresh-token',
+      expiresIn: 1800,
+    ));
   }
 
-  testWidgets('未登录先进入一键登录页，登录后进入首页', (WidgetTester tester) async {
+  testWidgets('未登录先进入登录页，登录后进入首页', (WidgetTester tester) async {
     await tester.pumpWidget(const App());
     await tester.pumpAndSettle();
 
-    // 未登录：展示一键登录页（支持一键登录的机型默认态）
-    expect(find.text('本机号码一键登录'), findsOneWidget);
+    // 未登录：展示验证码登录页 + 底部第三方图标，无主框架。
+    // 一键登录图标依赖真机 SIM 检测，测试环境无原生插件故不显示，这里只断言常驻的微信入口。
+    expect(find.text('验证码登录'), findsOneWidget);
+    expect(find.text('微信登录'), findsOneWidget);
     expect(find.byType(MainShell), findsNothing);
 
-    await loginThroughOneClick(tester);
+    await loginForTest();
+    await tester.pumpAndSettle();
 
     // 登录成功：进入主框架
     expect(find.byType(MainShell), findsOneWidget);
@@ -52,7 +51,10 @@ void main() {
   });
 
   testWidgets('底部 Tab 可以切换', (WidgetTester tester) async {
-    await loginThroughOneClick(tester);
+    await tester.pumpWidget(const App());
+    await tester.pumpAndSettle();
+    await loginForTest();
+    await tester.pumpAndSettle();
 
     // 健康 tab
     await tester.tap(find.text('健康'));

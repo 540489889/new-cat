@@ -122,9 +122,6 @@ class AuthService extends ChangeNotifier {
   /// 是否已登录。
   bool get loggedIn => _loggedIn;
 
-  /// 一键登录页展示的脱敏手机号，真实场景由运营商 SDK 返回。
-  String get maskedPhone => '182****3210';
-
   /// 单例恢复 Future：保证 main 与 AuthGate 可重复安全等待同一次恢复。
   static Future<bool>? _restoreFuture;
 
@@ -304,13 +301,6 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  /// 探测当前手机是否支持本机号码一键登录。
-  Future<bool> isOneClickSupported() async {
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    return defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS;
-  }
-
   /// 发送短信验证码。
   static Future<AuthResult> sendSmsCode(String mobile) async {
     try {
@@ -374,16 +364,44 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  /// 本机号码一键登录（当前为 mock，接入 AliAuth 后替换为真实 token 校验）。
-  ///
-  /// 因拿不到服务端令牌，这里持久化本地会话标记，保证冷启动能恢复登录态，
-  /// 否则用户每次打开 App 都被要求重新登录。
-  Future<void> loginWithOneClick() async {
+  /// 本机号码一键登录：拿运营商标识 token 请求后端换取登录态。
+  /// 对齐 f-cat 的 /auth/app/login/mobileAuth?accessToken=...
+  Future<LoginResult> loginByMobileAuth(String token) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_sessionKey, true);
-    } catch (_) {
-      // 插件不可用时仅保留内存态
+      final uri = Uri.parse('${ApiConfig.baseUrl}/auth/app/login/mobileAuth')
+          .replace(queryParameters: {'accessToken': token});
+      final response = await http
+          .post(uri, headers: _jsonHeaders)
+          .timeout(const Duration(seconds: ApiConfig.connectTimeout));
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 && _isSuccess(body['code'])) {
+        final data = body['data'] as Map<String, dynamic>?;
+        if (data != null) {
+          return LoginResult.ok(
+            accessToken: data['access_token'] as String? ?? '',
+            refreshToken: data['refresh_token'] as String? ?? '',
+            expiresIn: _toInt(data['expires_in']) ?? 1800,
+            userInfo: data['memberInfo'] as Map<String, dynamic>?,
+          );
+        }
+      }
+      return LoginResult.fail(body['msg'] ?? '一键登录失败');
+    } catch (e) {
+      return LoginResult.fail('网络异常：$e');
+    }
+  }
+
+  /// 一键登录成功后落地登录态（持久化 token + 用户信息 + 通知刷新）。
+  /// 登录页通过 [loginByMobileAuth] 拿到 [LoginResult] 后调用本方法。
+  Future<void> applyMobileAuthLogin(LoginResult result) async {
+    await _persistToken(
+      result.accessToken!,
+      result.refreshToken!,
+      expiresIn: result.expiresIn ?? 1800,
+    );
+    final info = result.userInfo;
+    if (info != null && info.isNotEmpty) {
+      await saveUserInfo(info);
     }
     _loggedIn = true;
     notifyListeners();
