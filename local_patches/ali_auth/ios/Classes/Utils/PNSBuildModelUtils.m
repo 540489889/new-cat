@@ -263,7 +263,7 @@
   model.privacyAlignment = [viewConfig intValueForKey: @"protocolLayoutGravity" defaultValue: 1];;
   model.privacyFont = [UIFont fontWithName:@"PingFangSC-Regular" size: [viewConfig floatValueForKey: @"privacyTextSize" defaultValue: 12.0]];
   model.privacyPreText = [viewConfig stringValueForKey: @"privacyBefore" defaultValue: @"点击一键登录并登录表示您已阅读并同意"];
-  model.privacySufText = [viewConfig stringValueForKey: @"privacyEnd" defaultValue: @"思预云用户协议，隐私"];
+  model.privacySufText = [viewConfig stringValueForKey: @"privacyEnd" defaultValue: @"只创宠物用户协议，隐私"];
   model.privacyOperatorPreText = [viewConfig stringValueForKey: @"vendorPrivacyPrefix" defaultValue: @"《"];
   model.privacyOperatorSufText = [viewConfig stringValueForKey: @"vendorPrivacySuffix" defaultValue: @"》"];
   
@@ -666,7 +666,7 @@
   model.privacyAlignment = [viewConfig intValueForKey: @"protocolLayoutGravity" defaultValue: 1];
   model.privacyFont = [UIFont fontWithName:@"PingFangSC-Regular" size: [viewConfig floatValueForKey: @"privacyTextSize" defaultValue: 12.0]];
   model.privacyPreText = [viewConfig stringValueForKey: @"privacyBefore" defaultValue: @"点击一键登录并登录表示您已阅读并同意"];
-  model.privacySufText = [viewConfig stringValueForKey: @"privacyEnd" defaultValue: @"思预云用户协议，隐私"];
+  model.privacySufText = [viewConfig stringValueForKey: @"privacyEnd" defaultValue: @"只创宠物用户协议，隐私"];
   model.privacyOperatorPreText = [viewConfig stringValueForKey: @"vendorPrivacyPrefix" defaultValue: @"《"];
   model.privacyOperatorSufText = [viewConfig stringValueForKey: @"vendorPrivacySuffix" defaultValue: @"》"];
   /// 协议水平垂直设置
@@ -1152,7 +1152,7 @@
     model.privacyAlignment = [viewConfig intValueForKey: @"protocolLayoutGravity" defaultValue: 1];;
     model.privacyFont = [UIFont fontWithName:@"PingFangSC-Regular" size: [viewConfig floatValueForKey: @"privacyTextSize" defaultValue: 12.0]];
     model.privacyPreText = [viewConfig stringValueForKey: @"privacyBefore" defaultValue: @"点击一键登录并登录表示您已阅读并同意"];
-    model.privacySufText = [viewConfig stringValueForKey: @"privacyEnd" defaultValue: @"思预云用户协议，隐私"];
+    model.privacySufText = [viewConfig stringValueForKey: @"privacyEnd" defaultValue: @"只创宠物用户协议，隐私"];
     model.privacyOperatorPreText = [viewConfig stringValueForKey: @"vendorPrivacyPrefix" defaultValue: @"《"];
     model.privacyOperatorSufText = [viewConfig stringValueForKey: @"vendorPrivacySuffix" defaultValue: @"》"];
     /// 协议水平垂直设置
@@ -1777,7 +1777,7 @@
   if (!model.sloganIsHidden) {
     model.sloganText = [
       [NSAttributedString alloc]
-      initWithString: [dict stringValueForKey: @"sloganText" defaultValue: @"思预云欢迎您使用一键登录"]
+      initWithString: [dict stringValueForKey: @"sloganText" defaultValue: @"只创宠物欢迎您使用一键登录"]
           attributes: @{
            NSForegroundColorAttributeName: [self getColor: [dict stringValueForKey: @"sloganTextColor" defaultValue: @"#555555"]],
            NSFontAttributeName: [
