@@ -44,7 +44,9 @@ class AppRouter {
         final cacheKey = settings.arguments is String
             ? settings.arguments! as String
             : '';
-        return MaterialPageRoute(
+        // 显式声明 <bool>：登录页用 pushNamed<bool> 接收绑定结果
+        // (pop(true))，泛型不匹配会在 pushNamed 内部 cast 时崩溃。
+        return MaterialPageRoute<bool>(
           builder: (_) => BindMobilePage(cacheKey: cacheKey),
           settings: settings,
         );
