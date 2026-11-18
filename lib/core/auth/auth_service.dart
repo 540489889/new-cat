@@ -484,7 +484,9 @@ class AuthService extends ChangeNotifier {
   /// 苹果授权登录：把 Apple 返回的凭证交给后端校验并换取登录态。
   /// 接口：POST /auth/app/login/apple
   /// 仅在 iOS 且系统 >= 13 时可调用（Android 无 Sign in with Apple 原生弹窗）。
-  Future<LoginResult> loginByApple({
+  /// 后端可能返回「需绑定手机号」（data.message == 'bindMobile'，携带 cacheKey），
+  /// 与微信登录一致，由调用方跳绑定手机号页。
+  Future<WechatLoginResult> loginByApple({
     required String identityToken,
     required String authorizationCode,
     required String userIdentifier,
@@ -517,7 +519,12 @@ class AuthService extends ChangeNotifier {
       if (response.statusCode == 200 && _isSuccess(body['code'])) {
         final data = body['data'] as Map<String, dynamic>?;
         if (data != null) {
-          return LoginResult.ok(
+          // 苹果账号未绑定手机号：后端返回 message=bindMobile + cacheKey，走绑定流程。
+          if (data['message'] == 'bindMobile') {
+            return WechatLoginResult.needsBind(
+                cacheKey: data['cacheKey'] as String? ?? '');
+          }
+          return WechatLoginResult.ok(
             accessToken: data['access_token'] as String? ?? '',
             refreshToken: data['refresh_token'] as String? ?? '',
             expiresIn: _toInt(data['expires_in']) ?? 1800,
@@ -525,9 +532,9 @@ class AuthService extends ChangeNotifier {
           );
         }
       }
-      return LoginResult.fail(body['msg'] ?? '苹果登录失败');
+      return WechatLoginResult.fail(body['msg'] ?? '苹果登录失败');
     } catch (e) {
-      return LoginResult.fail('网络异常：$e');
+      return WechatLoginResult.fail('网络异常：$e');
     }
   }
 

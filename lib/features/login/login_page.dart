@@ -230,7 +230,9 @@ class _LoginPageState extends State<LoginPage> {
     final int sloganY = logoY + logoH + (unit * 0.16).round();
     final int numY = sloganY + (unit * 0.45).round();
     final int btnY = numY + (unit * 0.8).round();
-    final int switchY = btnY + 96 + (unit * 0.35).round();
+    // 按钮高度匹配 logo_btn_bg.png 的宽高比（约 6.9:1，按钮宽约 320dp → 高约 47dp）。
+    const int btnH = 48;
+    final int switchY = btnY + btnH + (unit * 0.35).round();
     return AliAuthModel(
       _androidSk,
       _iosSk,
@@ -260,13 +262,13 @@ class _LoginPageState extends State<LoginPage> {
       logBtnText: '本机号码一键登录',
       logBtnTextSize: 16,
       logBtnTextColor: '#FFFFFF',
-      logBtnHeight: 96,
+      logBtnHeight: btnH,
       logBtnOffsetY: btnY,
       logBtnOffsetX: 0,
       logBtnMarginLeftAndRight: 20,
       logBtnLayoutGravity: Gravity.centerHorizntal,
       logBtnToastHidden: false,
-      logBtnBackgroundPath: 'assets/images/btn-bg.png',
+      logBtnBackgroundPath: 'assets/images/icon/logo_btn_bg.png',
       switchAccText: '验证码登录',
       switchOffsetY: switchY,
       switchOffsetY_B: -1,
@@ -607,10 +609,23 @@ class _LoginPageState extends State<LoginPage> {
         );
         if (!mounted) return;
         if (res.isSuccess) {
-          await AuthService.instance.applyWechatLogin(res);
-        } else {
-          TToast.showText(res.message, context: context);
+          await AuthService.instance.applyWechatLogin(LoginResult.ok(
+            accessToken: res.accessToken!,
+            refreshToken: res.refreshToken!,
+            expiresIn: res.expiresIn ?? 1800,
+            userInfo: res.userInfo,
+          ));
+          return;
         }
+        if (res.needsBind && res.cacheKey != null) {
+          // 苹果账号未绑定手机号：走与微信一致的绑定手机号流程。
+          await Navigator.of(context).pushNamed<bool>(
+            AppRoutes.bindMobile,
+            arguments: res.cacheKey,
+          );
+          return;
+        }
+        TToast.showText(res.message, context: context);
       } catch (e) {
         if (mounted) TToast.showText('苹果登录异常：$e', context: context);
       } finally {
