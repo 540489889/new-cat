@@ -1,3 +1,5 @@
+import 'dart:ui' show lerpDouble;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -36,6 +38,21 @@ class PetPage extends StatefulWidget {
   /// 标题栏高度（不含状态栏）：内容滚动盒子的上边界，
   /// 也是「状态栏 + 标题」占用的高度（与健康页一致）
   static const double _titleBarHeight = 58;
+
+  /// 取顶部渐变在纵向 [y]（相对渐变层顶部）处的颜色（分段线性插值）。
+  /// 用于档案卡收起态背景，使其与背后渐变完全衔接、融为一体。
+  static Color gradientColorAt(double y, double bgH) {
+    final p = (y / bgH).clamp(0.0, 1.0);
+    final stops = _topGradient.stops!;
+    final colors = _topGradient.colors;
+    for (int i = 0; i < stops.length - 1; i++) {
+      if (p <= stops[i + 1]) {
+        final f = ((p - stops[i]) / (stops[i + 1] - stops[i])).clamp(0.0, 1.0);
+        return Color.lerp(colors[i], colors[i + 1], f)!;
+      }
+    }
+    return colors.last;
+  }
 
   @override
   State<PetPage> createState() => _PetPageState();
@@ -88,25 +105,29 @@ class _PetPageState extends State<PetPage> {
             left: 0,
             right: 0,
             bottom: 0,
-            child: SingleChildScrollView(
+            child: CustomScrollView(
               controller: _scrollController,
-              // 盒子坐标内留白：保持首卡在屏幕上的位置仍为 topInset + 62
-              padding: EdgeInsets.only(
-                top: 62 - PetPage._titleBarHeight,
-                bottom: bottomPad,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 档案卡：直接随内容滚动，滑出标题栏下沿即被盒子裁掉
-                  // 注意：这里刻意不用 const —— const 无参实例在热重载时会被
-                  // 判定为 identical 而跳过整个子树重建，导致改动不生效
-                  _PetProfileCard(),
-                  _FeatureGrid(),
-                  _AdventureDiaryCard(),
-                  _HighlightsCard(),
-                ],
-              ),
+              slivers: [
+                // 档案卡折叠头：pinned 固定在标题栏正下方，
+                // 上滑时收起为「小头像 + 名字」紧凑条，下滑展开为完整卡片
+                const SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _ProfileCardDelegate(),
+                ),
+                SliverPadding(
+                  padding: EdgeInsets.only(bottom: bottomPad),
+                  sliver: SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _FeatureGrid(),
+                        _AdventureDiaryCard(),
+                        _HighlightsCard(),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           // 底部 AI 问答浮条：与健康页一致，紧贴胶囊 TabBar 上方
@@ -217,10 +238,49 @@ class _Header extends StatelessWidget {
   }
 }
 
+/// 档案卡折叠头 delegate：pinned 在标题栏下方，
+/// 随滚动偏移把 shrinkOffset 映射为 collapsed（0=展开，1=收起）传给卡片。
+class _ProfileCardDelegate extends SliverPersistentHeaderDelegate {
+  const _ProfileCardDelegate();
+
+  // 展开态总高（顶部留白4 + 完整卡片 + 底部间距12）与收起态总高（横向迷你栏）
+  static const double expandedExtent = 240;
+  static const double collapsedExtent = 64;
+
+  @override
+  double get maxExtent => expandedExtent;
+
+  @override
+  double get minExtent => collapsedExtent;
+
+  /// 收缩比例 t 对应的 pinned extent（供卡片背景做渐变对齐计算）
+  static double extentFor(double t) =>
+      lerpDouble(expandedExtent, collapsedExtent, t)!;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    final t =
+        (shrinkOffset / (expandedExtent - collapsedExtent)).clamp(0.0, 1.0);
+    // 刻意不用 const 缓存实例：收缩比例每帧变化，需要实时重建
+    return _PetProfileCard(collapsed: t);
+  }
+
+  @override
+  bool shouldRebuild(covariant SliverPersistentHeaderDelegate oldDelegate) =>
+      false;
+}
+
 /// 宠物档案卡：头像轮播（可滑动/点击切换宠物）+ 名字（可点选择）+ 陪伴天数 + 属性行，
 /// 卡片左上/右下带浅色同心圆装饰。
+/// [collapsed] 0=完整展开，1=收起为「小头像+名字」紧凑条，中间连续插值。
 class _PetProfileCard extends StatefulWidget {
-  const _PetProfileCard();
+  const _PetProfileCard({required this.collapsed});
+
+  final double collapsed;
 
   @override
   State<_PetProfileCard> createState() => _PetProfileCardState();
@@ -302,14 +362,36 @@ class _PetProfileCardState extends State<_PetProfileCard> {
       (Icons.monitor_weight, '3kg'),
     ];
 
+    // 收缩插值：t=0 完整展开，t=1 收起为横向迷你档案栏
+    final t = widget.collapsed.clamp(0.0, 1.0);
+    final vPad = lerpDouble(20, 6, t)!;
+    // 纵向轮播随收起淡出（高度收为 0），由横向迷你栏接管
+    final avatarH = lerpDouble(96, 0, t)!;
+    final avatarSize = lerpDouble(80, 36, t)!;
+    // 天数 / 属性行：收缩到一半时开始淡出，收起后完全隐藏
+    final fadeOut = (1 - t * 2).clamp(0.0, 1.0);
+    // 收起时卡片融入标题栏：白底渐变为「与背后渐变衔接的颜色」、
+    // 深色文字渐变为白色。收起条背景对齐背后渐变的对应区段，
+    // 既遮住从下方滚过的内容，视觉上又与标题那块渐变融为一体。
+    final topInset = MediaQuery.of(context).padding.top;
+    final bgH = topInset + PetPage._gradientHeightExtra;
+    // 卡片顶部相对渐变层顶部的 y（盒顶 = 状态栏 + 标题栏，加自身顶部边距）
+    final cardTopY =
+        topInset + PetPage._titleBarHeight + lerpDouble(4, 0, t)!;
+    // 卡片实际高度 = pinned extent − 上下 margin
+    final cardH = _ProfileCardDelegate.extentFor(t) - 12 - lerpDouble(4, 0, t)!;
+    final g0 = PetPage.gradientColorAt(cardTopY, bgH);
+    final g1 = PetPage.gradientColorAt(cardTopY + cardH, bgH);
+    final nameColor = Color.lerp(PetPage._ink, Colors.white, t)!;
+
     ImageProvider avatarImg(String h) => h.isNotEmpty
         ? NetworkImage(h)
         : const AssetImage('assets/images/group-1.png');
 
     // 大头像（当前宠物带粉色描边圆，侧边探出的不带）
     Widget bigAvatar(String h, {bool ringed = true}) => Container(
-      width: 80,
-      height: 80,
+      width: avatarSize,
+      height: avatarSize,
       padding: EdgeInsets.all(ringed ? 5 : 0),
       decoration: ringed
           ? BoxDecoration(
@@ -326,7 +408,7 @@ class _PetProfileCardState extends State<_PetProfileCard> {
         : GestureDetector(
             onTap: () => _tapNext(petState),
             child: SizedBox(
-              height: 96,
+              height: avatarH,
               child: PageView.builder(
                 controller: _pageCtrl,
                 itemCount: pets.length,
@@ -363,94 +445,199 @@ class _PetProfileCardState extends State<_PetProfileCard> {
           );
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      // 收起时去掉圆角、宽度占满，与标题区融为完整一块
+      margin: EdgeInsets.fromLTRB(
+        lerpDouble(12, 0, t)!,
+        lerpDouble(4, 0, t)!,
+        lerpDouble(12, 0, t)!,
+        12,
+      ),
       // 白卡样式（保留原始设计）：白色圆角卡片 + 四角浅色同心圆装饰，
-      // 浮于渐变头部之上，渐变在卡片四周/上方透出作为页面顶部背景
+      // 浮于渐变头部之上，渐变在卡片四周/上方透出作为页面顶部背景；
+      // 收起时白底渐变为与背后衔接的渐变色，与标题栏融为一体
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(lerpDouble(20, 0, t)!),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color.lerp(Colors.white, g0, t)!,
+            Color.lerp(Colors.white, g1, t)!,
+          ],
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [
-          // 装饰：左上 / 右下 浅色同心圆
-          const Positioned(top: -80, left: -60, child: _DecoRings()),
-          const Positioned(bottom: -80, right: -60, child: _DecoRings()),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            child: Column(
-              children: [
-                avatarWidget,
-                const SizedBox(height: 8),
-                // 名字 + 右箭头（点击进入宠物详情）
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.of(context).pushNamed('/pet/detail'),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          name,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: PetPage._ink,
-                          ),
-                        ),
-                      ),
-                      const Icon(
-                        Icons.chevron_right,
-                        size: 18,
-                        color: PetPage._ink,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 4),
-                // 陪伴天数行：点击进入宠物详情页
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.of(context).pushNamed('/pet/detail'),
-                  child: Text(
-                    '和$name的第108天',
-                    style: const TextStyle(fontSize: 13, color: PetPage._sub),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // 属性行：品种/性别/年龄/绝育/体重，均匀分布
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    children: [
-                      for (int i = 0; i < stats.length; i++) ...[
-                        if (i > 0) const Spacer(),
-                        Flexible(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+          // 装饰：左上 / 右下 浅色同心圆（收起时随卡片一起淡出，避免浮在渐变上突兀）
+          Positioned(top: -80, left: -60, child: Opacity(
+            opacity: 1 - t,
+            child: const _DecoRings(),
+          )),
+          Positioned(bottom: -80, right: -60, child: Opacity(
+            opacity: 1 - t,
+            child: const _DecoRings(),
+          )),
+          // 收起时内容顶部对齐、底部溢出部分裁剪（天数/属性行已淡出，无视觉突兀）
+          // 注意：只放宽高度约束，宽度沿用父级——否则属性行的 Spacer 无法布局
+          ClipRect(
+            child: OverflowBox(
+              alignment: Alignment.topCenter,
+              minHeight: 0,
+              maxHeight: double.infinity,
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: vPad),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    avatarWidget,
+                    // 名字 + 右箭头（点击进入宠物详情）：
+                    // 收起时整行隐藏（heightFactor 收为 0 + 同步淡出），只留小头像
+                    ClipRect(
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        heightFactor: 1 - t,
+                        child: Opacity(
+                          opacity: fadeOut,
+                          child: Column(
                             children: [
-                              Icon(stats[i].$1, size: 15, color: _statIcon),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  stats[i].$2,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: _statText,
-                                  ),
+                              SizedBox(height: lerpDouble(8, 4, t)),
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => Navigator.of(context)
+                                    .pushNamed('/pet/detail'),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        name,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700,
+                                          color: nameColor,
+                                        ),
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.chevron_right,
+                                      size: 18,
+                                      color: nameColor,
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ],
+                      ),
+                    ),
+                    // 陪伴天数行：点击进入宠物详情页（收起时淡出并被裁剪）
+                    Opacity(
+                      opacity: fadeOut,
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 4),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () =>
+                                Navigator.of(context).pushNamed('/pet/detail'),
+                            child: Text(
+                              '和$name的第108天',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: PetPage._sub,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          // 属性行：品种/性别/年龄/绝育/体重，均匀分布
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            child: Row(
+                              children: [
+                                for (int i = 0; i < stats.length; i++) ...[
+                                  if (i > 0) const Spacer(),
+                                  Flexible(
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          stats[i].$1,
+                                          size: 15,
+                                          color: _statIcon,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Flexible(
+                                          child: Text(
+                                            stats[i].$2,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              color: _statText,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // 收起态：横向迷你档案栏淡入接管（头像 + 名字 + 陪伴天数 + 箭头），
+          // 填满通栏渐变，避免只有孤立小头像的空旷感
+          Positioned.fill(
+            child: Opacity(
+              opacity: t,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.of(context).pushNamed('/pet/detail'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 16,
+                        backgroundImage: avatarImg(selected?.headimg ?? ''),
+                      ),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          name,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        '陪伴的第108天',
+                        style: TextStyle(fontSize: 11, color: Colors.white70),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.chevron_right,
+                        size: 18,
+                        color: Colors.white,
+                      ),
                     ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ],
