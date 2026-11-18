@@ -155,11 +155,17 @@ class _LoginPageState extends State<LoginPage> {
             }
             return;
           }
-          // 授权页内正常交互，不能关闭授权页：
-          // 700002=点登录按钮（未勾协议时 SDK 自带 toast 提示，等用户勾选后再点）
-          // 700003=勾选协议、700004=点协议富文本、600001=唤起授权页成功
+          // 授权页内正常交互，不能关闭授权页（未勾协议的 toast 由 SDK 原生层弹出，
+          // 层级在授权页之上）：700002=点登录按钮、700003=勾选协议、
+          // 700004=点协议富文本、600001=唤起授权页成功
           if (code == '700002' ||
               code == '700003' ||
+              code == '700004' ||
+              code == '600001' ||
+              code == '600016') {
+            return;
+          }
+          if (code == '700003' ||
               code == '700004' ||
               code == '600001' ||
               code == '600016') {
@@ -267,6 +273,7 @@ class _LoginPageState extends State<LoginPage> {
       logBtnOffsetX: 0,
       logBtnMarginLeftAndRight: 20,
       logBtnLayoutGravity: Gravity.centerHorizntal,
+      // 保留 SDK 原生层的协议 toast（在授权页之上，层级正确）。
       logBtnToastHidden: false,
       // 必须为逗号分隔的 3 张图（正常/按下/禁用）两端才生效；三态复用同一张。
       logBtnBackgroundPath: [

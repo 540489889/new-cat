@@ -353,8 +353,11 @@ bool bool_false = false;
               [[weakSelf findCurrentViewController].view hitTest:CGPointMake(_vc.view.bounds.size.width, _vc.view.bounds.size.height) withEvent:nil];
 //              [[weakSelf findCurrentViewController].view addSubview:headerView];
               
-              // 当未勾选隐私协议时，弹出 Toast 提示
+              // 当未勾选隐私协议时，弹出 Toast 提示（在授权页之上，层级正确）
               if ([PNSCodeLoginControllerClickLoginBtn isEqualToString:code] && !self->_isChecked) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                  [weakSelf showProtocolToast:@"请先阅读并同意用户协议"];
+                });
               } else if ([PNSCodeSuccess isEqualToString:code]) {
                 bool autoQuitPage = [self->_callData.arguments boolValueForKey: @"autoQuitPage" defaultValue: YES];
                 // 登录成功后是否自动关闭页面
@@ -414,6 +417,58 @@ bool bool_false = false;
 //  // 设置上下的位置
 //  hud.offset = CGPointMake(0.f, offSetY);
 //  [hud hideAnimated:YES afterDelay: [dic floatValueForKey: @"toastDelay" defaultValue: 3]];
+}
+
+#pragma mark - 协议提示 toast（纯 UIKit，显示在授权页之上）
+- (void)showProtocolToast:(NSString *)message {
+  UIWindow *window = nil;
+  if (@available(iOS 13.0, *)) {
+    for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+      if ([scene isKindOfClass:[UIWindowScene class]] &&
+          scene.activationState == UISceneActivationStateForegroundActive) {
+        for (UIWindow *w in ((UIWindowScene *)scene).windows) {
+          if (w.isKeyWindow) { window = w; break; }
+        }
+        if (window) break;
+      }
+    }
+  }
+  if (!window) {
+    window = [[UIApplication sharedApplication].delegate window];
+  }
+  if (!window) return;
+
+  UIView *toast = [[UIView alloc] init];
+  toast.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.8];
+  toast.layer.cornerRadius = 8;
+  toast.layer.masksToBounds = YES;
+  UILabel *label = [[UILabel alloc] init];
+  label.text = message;
+  label.textColor = [UIColor whiteColor];
+  label.font = [UIFont systemFontOfSize:14];
+  label.textAlignment = NSTextAlignmentCenter;
+  label.numberOfLines = 0;
+  [toast addSubview:label];
+
+  CGFloat maxW = window.bounds.size.width - 60;
+  CGSize maxSize = CGSizeMake(maxW, 120);
+  CGSize textSize = [label sizeThatFits:maxSize];
+  CGFloat labelW = MIN(maxW, textSize.width + 32);
+  CGFloat labelH = textSize.height + 24;
+  label.frame = CGRectMake(0, 0, labelW, labelH);
+  toast.frame = CGRectMake((window.bounds.size.width - labelW) / 2,
+                           window.bounds.size.height - 160,
+                           labelW, labelH);
+  [window addSubview:toast];
+
+  toast.alpha = 0;
+  [UIView animateWithDuration:0.2 animations:^{ toast.alpha = 1; } completion:^(BOOL finished) {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+      [UIView animateWithDuration:0.3 animations:^{ toast.alpha = 0; } completion:^(BOOL finished) {
+        [toast removeFromSuperview];
+      }];
+    });
+  }];
 }
 
 -(void) resultData:(NSDictionary *)dict{
