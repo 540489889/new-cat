@@ -38,25 +38,21 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
-    // 设备自带底部安全区（iPhone Home Indicator 约 34px）已由 SafeArea 处理。
-    // 有安全区时不再叠加自写间距，否则胶囊下方会出现 34 + 12 = 46px 的过大空隙；
-    // 无安全区的设备（如部分 Android）仍保留 12px 悬浮留白。
-    final hasSystemBottomInset =
-        MediaQuery.of(context).viewPadding.bottom > 0;
-    final extraBottomGap = hasSystemBottomInset ? 0.0 : 12.0;
+    // 底部悬浮胶囊间距：iPhone 安全区（Home Indicator 约 34px）全部留出会显得
+    // 间距过大，这里只保留少量间隙让胶囊贴近屏幕底部；无安全区的设备保留 12px。
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final bottomGap = bottomInset > 0
+        ? (bottomInset - 22).clamp(6.0, 24.0)
+        : 12.0;
 
     return StatusBarStyle(
       child: Scaffold(
         // 让页面内容延伸到悬浮胶囊下方，胶囊左右空隙透出的是页面内容而非纯色背景
         extendBody: true,
         body: IndexedStack(index: _currentIndex, children: _pages),
-        bottomNavigationBar: SafeArea(
-          top: false,
-          bottom: true,
-          child: Padding(
-            // 悬浮胶囊：左右内缩 20、栏体高 64，浮于页面内容之上
-            padding: EdgeInsets.only(bottom: extraBottomGap),
-            child: SizedBox(
+        bottomNavigationBar: Padding(
+          padding: EdgeInsets.only(bottom: bottomGap),
+          child: SizedBox(
               height: 64,
               child: Stack(
                 children: [
@@ -148,7 +144,6 @@ class _MainShellState extends State<MainShell> {
                 ),
               ],
             ),
-          ),
           ),
         ),
       ),
