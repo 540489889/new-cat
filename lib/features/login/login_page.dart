@@ -18,8 +18,9 @@ import '../../core/auth/auth_service.dart';
 import '../../core/router/app_router.dart';
 import '../../shared/widgets/status_bar_style.dart';
 
-/// 登录页：进页面自动拉起本机号码一键登录（阿里云 AliAuth），
-/// 失败 / 用户取消 / 点「更多登录方式」则回落到验证码登录页。
+/// 登录页：设备支持一键登录时，进入页面即自动拉起阿里云 AliAuth 的
+/// 全屏授权页（PageType.fullPort，即本机号码一键登录全屏 UI），
+/// 不支持 / 取消 / 失败时回落到页面自身的验证码登录。
 /// 微信、苹果登录作为底部第三方入口常驻。
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -80,7 +81,7 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     // 一键登录：先检测设备是否支持（SIM 运营商 + 网络 + 插件可用），
-    // 支持才注册监听、显示入口并自动拉起；否则静默只用验证码登录。
+    // 支持则直接拉起 SDK 全屏授权页，否则停留在验证码登录页。
     _detectOneClickSupport();
   }
 
@@ -106,12 +107,14 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
       setState(() => _oneClickSupported = supported);
       if (supported) {
+        // 支持 → 直接拉起 SDK 全屏授权页（本机号码一键登录全屏 UI），
+        // 不再经过自绘中间页；取消/失败由底层验证码页兜底。
         _setupAliAuthListener();
-        _scheduleAutoOneClick();
+        _launchAliAuth();
       }
     } catch (e) {
-      // 插件不可用/检测失败：不支持一键登录，保持验证码登录
-      debugPrint('一键登录能力检测失败，隐藏入口: $e');
+      // 插件不可用/检测失败：不显示一键入口，停留在验证码登录页
+      debugPrint('一键登录能力检测失败，使用验证码登录: $e');
     }
   }
 
@@ -152,19 +155,31 @@ class _LoginPageState extends State<LoginPage> {
             }
             return;
           }
-          if (code == '700001' ||
-              code == '700002' ||
-              code == '700005' ||
-              code == '600008' ||
-              code == '600015') {
-            _fallbackToCodeLogin();
+          // 授权页内正常交互，不能关闭授权页：
+          // 700002=点登录按钮（未勾协议时 SDK 自带 toast 提示，等用户勾选后再点）
+          // 700003=勾选协议、700004=点协议富文本、600001=唤起授权页成功
+          if (code == '700002' ||
+              code == '700003' ||
+              code == '700004' ||
+              code == '600001' ||
+              code == '600016') {
             return;
           }
-          if (code == '600011' ||
+          // 用户点「切换其他登录方式」→ 关闭授权页，露出底层验证码页
+          // 700001=切换其他方式；600008=蜂窝网络未开启
+          if (code == '700001' || code == '600008') {
+            _dismissAliAuth();
+            return;
+          }
+          // 用户取消 / 一键登录失败 → 关闭授权页，露出底层验证码页
+          if (code == '700000' ||
+              code == '600015' ||
+              code == '600011' ||
               code == '600013' ||
               code == '600014' ||
+              code == '600021' ||
               code == '600024') {
-            _fallbackToCodeLogin();
+            _dismissAliAuth();
           }
         },
         onError: (error) {
@@ -177,27 +192,20 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  /// 进页面延迟自动拉起一键登录授权页。
-  void _scheduleAutoOneClick() {
-    if (kIsWeb) return;
-    Future<void>.delayed(const Duration(milliseconds: 300), () {
-      if (mounted && !_mobileAuthDone) _handleAliAuth(auto: true);
-    });
-  }
-
-  /// 启动 AliAuth 超时保护：8 秒无结果自动回落验证码登录。
+  /// 启动 AliAuth 超时保护：全屏页用户需要阅读/勾选协议，给 30 秒，
+  /// 超时仍无结果才关闭授权页、回落到底层验证码页。
   void _startAliAuthTimeout() {
     _aliAuthTimeout?.cancel();
-    _aliAuthTimeout = Timer(const Duration(seconds: 8), () {
+    _aliAuthTimeout = Timer(const Duration(seconds: 30), () {
       if (mounted && !_mobileAuthDone) {
-        debugPrint('AliAuth 超时，自动切换到验证码登录');
-        _fallbackToCodeLogin();
+        debugPrint('AliAuth 超时，回落到验证码登录');
+        _dismissAliAuth();
       }
     });
   }
 
-  /// 回落到验证码登录页：关闭授权页 + 清转圈。
-  void _fallbackToCodeLogin() {
+  /// 关闭授权页 + 清转圈，露出底层验证码页（如需重试可点一键登录图标）。
+  void _dismissAliAuth() {
     _aliAuthTimeout?.cancel();
     if (mounted) setState(() => _submittingSocial = null);
     // quitPage 返回 Future，异常是异步抛出的，必须 unawaited().catchError
@@ -207,59 +215,60 @@ class _LoginPageState extends State<LoginPage> {
     });
   }
 
-  /// 构造一键登录授权页 UI 参数（对齐 f-cat buildLoginModel）。
+  /// 构造一键登录授权页 UI 参数：SDK 全屏竖屏授权页（PageType.fullPort）。
+  /// 这一页本身就是「本机号码一键登录的全屏 UI」，无需 Flutter 自绘中间页。
   AliAuthModel _buildLoginModel() {
+    final view = ui.PlatformDispatcher.instance.views.first;
     final screenHeight =
-        (ui.PlatformDispatcher.instance.views.first.physicalSize.height /
-                ui.PlatformDispatcher.instance.views.first.devicePixelRatio)
-            .floor();
-    final int dialogHeight = (screenHeight * 0.6).floor();
-    final int unit = dialogHeight ~/ 8;
-    final thirdMap = {
-      'width': -1,
-      'height': -1,
-      'top': unit * 4 + 40,
-      'space': 20,
-      'size': 15,
-      'color': '#616161',
-      'itemWidth': 40,
-      'itemHeight': 40,
-    };
+        (view.physicalSize.height / view.devicePixelRatio).floor();
+    // 全屏授权页按整屏高度分布各区块（相对导航栏顶部的 dp 偏移）。
+    final int unit = (screenHeight / 8).floor();
+    const int logoH = 70;
+    final int logoY = (unit * 0.9).round();
+    // slogan（"中国移动提供认证服务"等运营商文案）显式放到 logo 下方，
+    // 不用 SDK 默认值，避免它与 logo 重叠。
+    final int sloganY = logoY + logoH + (unit * 0.16).round();
+    final int numY = sloganY + (unit * 0.45).round();
+    final int btnY = numY + (unit * 0.8).round();
+    final int switchY = btnY + 96 + (unit * 0.35).round();
     return AliAuthModel(
       _androidSk,
       _iosSk,
       isDebug: false,
       autoQuitPage: true,
-      pageType: PageType.dialogBottom,
+      pageType: PageType.fullPort,
       statusBarColor: '#00000000',
       bottomNavColor: '#FFFFFF',
       lightColor: true,
       isStatusBarHidden: false,
       statusBarUIFlag: UIFAG.systemUiFalgLayoutFullscreen,
       navHidden: true,
-      logoOffsetY: unit ~/ 2,
+      logoOffsetY: logoY,
       logoImgPath: 'assets/images/logo.png',
       logoHidden: false,
       logoWidth: 70,
-      logoHeight: 70,
+      logoHeight: logoH,
       logoScaleType: ScaleType.fitXy,
+      sloganHidden: false,
+      sloganOffsetY: sloganY,
+      sloganTextColor: '#666666',
+      sloganTextSize: 13,
       numberColor: '#333333',
-      numberSize: 18,
-      numFieldOffsetY: unit * 2,
+      numFieldOffsetY: numY,
       numberFieldOffsetX: 0,
       numberLayoutGravity: Gravity.centerHorizntal,
       logBtnText: '本机号码一键登录',
       logBtnTextSize: 16,
       logBtnTextColor: '#FFFFFF',
       logBtnHeight: 96,
-      logBtnOffsetY: unit * 3,
+      logBtnOffsetY: btnY,
       logBtnOffsetX: 0,
       logBtnMarginLeftAndRight: 20,
       logBtnLayoutGravity: Gravity.centerHorizntal,
       logBtnToastHidden: false,
       logBtnBackgroundPath: 'assets/images/btn-bg.png',
       switchAccText: '验证码登录',
-      switchOffsetY: (unit * 4.8).round(),
+      switchOffsetY: switchY,
       switchOffsetY_B: -1,
       switchAccTextColor: '#666666',
       switchAccTextSize: 16,
@@ -281,23 +290,12 @@ class _LoginPageState extends State<LoginPage> {
       checkBoxHeight: 15,
       checkboxHidden: false,
       privacyState: false,
-      dialogHeight: dialogHeight,
-      dialogBottom: true,
-      dialogCornerRadiusArray: [10, 10, 0, 0],
-      dialogAlpha: 0.4,
-      pageBackgroundRadius: 10,
-      customThirdView: CustomThirdView.fromJson(thirdMap),
-      pageBackgroundPath: '',
+      // 不显示 SDK 授权页内置的第三方登录按钮（微信 / 苹果）。
+      isHiddenCustom: true,
+      // SDK 全屏授权页背景沿用登录页的 logo-bg.png（默认 scaleAspectFill 铺满）。
+      pageBackgroundPath: 'assets/images/logo-bg.png',
+      backgroundImageContentMode: ContentMode.scaleAspectFill,
     );
-  }
-
-  /// 拉起一键登录授权页。auto=true 为进页面自动拉起（SDK 内自带协议勾选）。
-  Future<void> _handleAliAuth({bool auto = false}) async {
-    if (!auto) {
-      _ensureAgreed(() => _launchAliAuth());
-    } else {
-      _launchAliAuth();
-    }
   }
 
   Future<void> _launchAliAuth() async {
@@ -309,7 +307,7 @@ class _LoginPageState extends State<LoginPage> {
       await AliAuth.login();
     } catch (e) {
       debugPrint('一键登录拉起失败: $e');
-      _fallbackToCodeLogin();
+      _dismissAliAuth();
     }
   }
 
@@ -323,15 +321,20 @@ class _LoginPageState extends State<LoginPage> {
       if (res.isSuccess) {
         _mobileAuthDone = true;
         _aliAuthTimeout?.cancel();
+        // 先关掉 SDK 授权页（原生 LoginAuthActivity），否则它的 loading 会盖住首页。
+        // autoQuitPage 在部分机型上未生效，这里显式关闭；异常吞掉避免 MissingPlugin。
+        AliAuth.quitPage().catchError((Object e) {
+          debugPrint('AliAuth.quitPage(登录成功后) 不可用（忽略）: $e');
+        });
         await AuthService.instance.applyMobileAuthLogin(res);
         // AuthGate 监听 AuthService，登录态一变自动切首页
       } else {
         TToast.showText(res.message, context: context);
-        _fallbackToCodeLogin();
+        _dismissAliAuth();
       }
     } catch (e) {
       if (mounted) TToast.showText('一键登录异常：$e', context: context);
-      _fallbackToCodeLogin();
+      _dismissAliAuth();
     }
   }
 
@@ -414,7 +417,8 @@ class _LoginPageState extends State<LoginPage> {
             SafeArea(
               child: Stack(
                 children: [
-                  // 验证码登录为主页面（一键登录授权页由 SDK 覆盖其上）
+                  // 验证码登录页作为底层常驻：SDK 全屏授权页覆盖其上，
+                  // 用户取消 / 失败 / 点「验证码登录」后回到这一层。
                   _buildCodeBody(token),
                   Positioned(
                     left: 24,
@@ -618,12 +622,12 @@ class _LoginPageState extends State<LoginPage> {
   Widget _buildSocialLogins() {
     final items = <({String asset, String label, VoidCallback onTap})>[];
 
-    // 仅在检测到设备支持时显示一键登录入口
+    // 仅在检测到设备支持时显示一键登录入口（点它重新拉起 SDK 全屏授权页）
     if (_oneClickSupported) {
       items.add((
         asset: _oneClickAsset,
         label: '一键登录',
-        onTap: () => _handleAliAuth(),
+        onTap: _launchAliAuth,
       ));
     }
 
