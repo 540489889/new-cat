@@ -10,7 +10,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:wechat_bridge/wechat_bridge.dart';
 
 import '../../config/api_config.dart';
-import '../../core/auth/auth_gate.dart' show globalWechatCallback;
+import '../../core/auth/auth_gate.dart'
+    show registerWechatCallback, unregisterWechatCallback;
 import '../../core/auth/auth_service.dart';
 import '../../core/router/app_router.dart';
 import '../../shared/widgets/status_bar_style.dart';
@@ -36,6 +37,13 @@ class _LoginPageState extends State<LoginPage> {
   bool _agreed = false;
   bool _submitting = false;
 
+  /// 正在请求的第三方登录图标资源路径。只让被点的那个图标转圈，
+  /// 其余图标保持静止（但一并禁用点击，避免重复拉起授权）。
+  /// 验证码登录按钮仍用 _submitting，两者互不影响。
+  String? _submittingSocial;
+  static const _wechatAsset = 'assets/images/icon/login-1.png';
+  static const _appleAsset = 'assets/images/icon/login-2.png';
+
   /// 已处理的微信授权 code：MethodChannel 与 respStream 可能同时回调，
   /// 同一个 code 只处理一次（微信 code 一次性，重复用必失败）。
   String? _handledWechatCode;
@@ -49,14 +57,15 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void initState() {
     super.initState();
-    // 微信授权回调入口（main.dart 的 MethodChannel / respStream 写入）
-    globalWechatCallback = (code) {
+    // 微信授权回调入口（main.dart 的 MethodChannel / respStream 写入）。
+    // 用 register 而非直接赋值：冷启动时 code 可能早于本页注册到达，会被暂存并在此补发。
+    registerWechatCallback((code) {
       // MethodChannel 与 respStream 可能先后送到同一个 code，去重避免重复请求
       // （微信 code 一次性，第二次使用会失败并弹错误提示）。
       if (code == _handledWechatCode) return;
       _handledWechatCode = code;
       _handleWechatAuth(code);
-    };
+    });
     _detectOneClickSupport();
   }
 
@@ -73,7 +82,7 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void dispose() {
     // 页面销毁时释放回调，避免微信授权回来后回调到已销毁的 State
-    globalWechatCallback = null;
+    unregisterWechatCallback();
     _countdownTimer?.cancel();
     _phoneController.dispose();
     _codeController.dispose();
@@ -388,7 +397,7 @@ class _LoginPageState extends State<LoginPage> {
   /// 若后端要求绑定手机号，则 push 绑定页，成功后返回并登录。
   Future<void> _handleWechatAuth(String code) async {
     if (!mounted) return;
-    setState(() => _submitting = true);
+    setState(() => _submittingSocial = _wechatAsset);
     try {
       final res = await AuthService.instance.loginByWechat(code);
       if (!mounted) return;
@@ -399,7 +408,7 @@ class _LoginPageState extends State<LoginPage> {
           expiresIn: res.expiresIn ?? 1800,
           userInfo: res.userInfo,
         ));
-        globalWechatCallback = null;
+        unregisterWechatCallback();
         return; // AuthGate 监听 AuthService，登录态一变自动切首页
       }
 
@@ -408,7 +417,7 @@ class _LoginPageState extends State<LoginPage> {
           AppRoutes.bindMobile,
           arguments: res.cacheKey,
         );
-        if (mounted && bound == true) globalWechatCallback = null;
+        if (mounted && bound == true) unregisterWechatCallback();
         return;
       }
 
@@ -418,7 +427,7 @@ class _LoginPageState extends State<LoginPage> {
     } finally {
       // 成功后本页会被 AuthGate 换掉（mounted=false），无需复位；
       // 失败/需绑定时复位，让图标恢复可点。
-      if (mounted) setState(() => _submitting = false);
+      if (mounted) setState(() => _submittingSocial = null);
     }
   }
 
@@ -426,6 +435,8 @@ class _LoginPageState extends State<LoginPage> {
   /// 姓名和邮箱仅首次授权会返回，之后 Apple 不再下发。
   Future<void> _handleAppleLogin() async {
     _ensureAgreed(() async {
+      if (!mounted) return;
+      setState(() => _submittingSocial = _appleAsset);
       try {
         final credential = await SignInWithApple.getAppleIDCredential(
           scopes: [
@@ -460,13 +471,29 @@ class _LoginPageState extends State<LoginPage> {
         }
       } catch (e) {
         if (mounted) TToast.showText('苹果登录异常：$e', context: context);
+      } finally {
+        // 成功后本页被 AuthGate 换掉（mounted=false），无需复位；
+        // 失败/取消时复位，让苹果图标恢复可点。
+        if (mounted) setState(() => _submittingSocial = null);
       }
     });
   }
 
   /// 第三方登录图标：微信（login-1）、苹果（login-2，仅 iOS）、一键登录（login-3）。
   Widget _buildSocialLogins() {
+    // 顺序：一键登录 → 微信 → 苹果（一键登录放最左）。
     final items = <({String asset, String label, VoidCallback onTap})>[
+      (
+        asset: 'assets/images/icon/login-3.png',
+        label: '一键登录',
+        onTap: () {
+          if (_oneClickSupported) {
+            _switchMode(_LoginMode.oneClick);
+          } else {
+            TToast.showText('当前设备不支持一键登录', context: context);
+          }
+        },
+      ),
       (
         asset: 'assets/images/icon/login-1.png',
         label: '微信登录',
@@ -474,7 +501,7 @@ class _LoginPageState extends State<LoginPage> {
       ),
     ];
 
-    // 苹果登录仅 iOS 支持（Sign in with Apple 无 Android 原生实现）
+    // 苹果登录仅 iOS 支持（Sign in with Apple 无 Android 原生实现），排最后
     if (!kIsWeb && Platform.isIOS) {
       items.add((
         asset: 'assets/images/icon/login-2.png',
@@ -483,60 +510,58 @@ class _LoginPageState extends State<LoginPage> {
       ));
     }
 
-    items.add((
-      asset: 'assets/images/icon/login-3.png',
-      label: '一键登录',
-      onTap: () {
-        if (_oneClickSupported) {
-          _switchMode(_LoginMode.oneClick);
-        } else {
-          TToast.showText('当前设备不支持一键登录', context: context);
-        }
-      },
-    ));
-
+    // 固定图标宽度 + 固定间距并居中：安卓只有 2 个图标时也不会被
+    // Expanded 均分整行而撑出巨大空隙，iOS 3 个图标时间距保持一致。
+    const itemWidth = 68.0;
+    const spacing = 8.0;
     return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
         for (final item in items)
-          Expanded(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              // 登录进行中禁用所有图标，避免重复点击/拉起授权
-              onTap: _submitting ? null : item.onTap,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Image.asset(
-                        item.asset,
-                        width: 44,
-                        height: 44,
-                        // 等待期淡化图标，突出上面的转圈
-                        opacity: AlwaysStoppedAnimation(_submitting ? 0.35 : 1.0),
-                      ),
-                      if (_submitting)
-                        const SizedBox(
-                          width: 26,
-                          height: 26,
-                          child: CircularProgressIndicator(strokeWidth: 2.5),
+          Builder(builder: (context) {
+            // 只有正在请求的那个图标转圈；有任意登录在进行时禁用全部点击，
+            // 避免重复拉起授权。
+            final busy = _submittingSocial == item.asset;
+            return SizedBox(
+              width: itemWidth,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _submittingSocial != null ? null : item.onTap,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Image.asset(
+                          item.asset,
+                          width: 44,
+                          height: 44,
+                          opacity: AlwaysStoppedAnimation(busy ? 0.35 : 1.0),
                         ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    item.label,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF8C7F85),
+                        if (busy)
+                          const SizedBox(
+                            width: 26,
+                            height: 26,
+                            child: CircularProgressIndicator(strokeWidth: 2.5),
+                          ),
+                      ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 6),
+                    Text(
+                      item.label,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF8C7F85),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ),
-      ],
+            );
+          }),
+      ].expand((widget) => [widget, const SizedBox(width: spacing)]).toList()
+        ..removeLast(),
     );
   }
 

@@ -48,7 +48,7 @@ void _setupWechat() {
     if (call.method == 'onWechatAuthCode') {
       final code = call.arguments as String?;
       if (code != null && code.isNotEmpty) {
-        globalWechatCallback?.call(code);
+        dispatchWechatCode(code);
       }
     }
     return null;
@@ -57,7 +57,7 @@ void _setupWechat() {
   // iOS/Android 通用：插件自身收到的授权响应
   WechatBridgePlatform.instance.respStream().listen((resp) {
     if (resp is WechatAuthResp && resp.isSuccessful && resp.code != null) {
-      globalWechatCallback?.call(resp.code!);
+      dispatchWechatCode(resp.code!);
     }
   });
 }

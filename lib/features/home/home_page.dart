@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:tdesign_flutter/tdesign_flutter.dart';
 
 import '../../core/pet/pet_state.dart';
+import '../../core/router/app_router.dart';
 import '../../shared/widgets/pet_picker.dart';
 import 'ai_daily_detail_page.dart';
 
@@ -496,32 +497,49 @@ class _PetSwitchBar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 仅这一行可点按弹窗，避免整块拦截下方内容的手势
-          GestureDetector(
-            onTap: () => showPetPicker(context, pet),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: Text(
-                    name,
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
+          // 宠物名（可点切换）与右侧消息铃铛同一行；只让这两块响应点击，
+          // 避免整行拦截下方内容的手势。用 Spacer 把铃铛顶到最右。
+          Row(
+            children: [
+              GestureDetector(
+                onTap: () => showPetPicker(context, pet),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.of(context).size.width - 120,
+                      ),
+                      child: Text(
+                        name,
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                    const SizedBox(width: 4),
+                    const Image(
+                      image: AssetImage('assets/images/icon/swich-1.png'),
+                      width: 10,
+                      height: 10,
+                      color: Color(0xFF7F6370),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 4),
-                const Image(
-                  image: AssetImage('assets/images/icon/swich-1.png'),
-                  width: 10,
-                  height: 10,
-                  color: Color(0xFF7F6370),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => Navigator.of(context).pushNamed(AppRoutes.news),
+                child: Image.asset(
+                  'assets/images/icon/lb-ico.png',
+                  width: 28,
+                  height: 28,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
           SizedBox(height: token.spacer / 2),
           Text(

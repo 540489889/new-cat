@@ -476,11 +476,14 @@ class AuthService extends ChangeNotifier {
   }) async {
     try {
       final uri = Uri.parse('${ApiConfig.baseUrl}/auth/app/login/apple');
+      // 后端以 @RequestParam 接收（报错 Required request parameter
+      // 'identityToken'），故用 form-urlencoded 提交，不能放 JSON body。
+      // http 包传 Map 会自动加 application/x-www-form-urlencoded 头；
+      // 这样 identityToken 也不会出现在 URL 日志里。
       final response = await http
           .post(
             uri,
-            headers: _jsonHeaders,
-            body: jsonEncode({
+            body: {
               'identityToken': identityToken,
               'authorizationCode': authorizationCode,
               'userIdentifier': userIdentifier,
@@ -489,7 +492,7 @@ class AuthService extends ChangeNotifier {
                 'givenName': givenName,
               if (familyName != null && familyName.isNotEmpty)
                 'familyName': familyName,
-            }),
+            },
           )
           .timeout(const Duration(seconds: ApiConfig.connectTimeout));
       final body = jsonDecode(response.body) as Map<String, dynamic>;

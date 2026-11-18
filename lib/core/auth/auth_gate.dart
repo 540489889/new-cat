@@ -8,6 +8,38 @@ import 'auth_service.dart';
 /// 登录页在 initState 里注册具体处理函数）。
 void Function(String code)? globalWechatCallback;
 
+/// 冷启动时 APP 被微信授权结果拉起，回调可能早于登录页 initState 到达；
+/// 此时 globalWechatCallback 仍为 null，先把 code 暂存，待登录页注册后立即补发，
+/// 避免授权成功回到 APP 却"无反应"。
+String? _pendingWechatCode;
+
+/// main.dart 收到微信 code 时统一走这里：登录页已就绪则直接处理，否则暂存。
+void dispatchWechatCode(String code) {
+  if (code.isEmpty) return;
+  final cb = globalWechatCallback;
+  if (cb != null) {
+    cb(code);
+  } else {
+    _pendingWechatCode = code;
+  }
+}
+
+/// 登录页 initState 注册回调；若之前有暂存的 code，注册后立即补发。
+void registerWechatCallback(void Function(String code) cb) {
+  globalWechatCallback = cb;
+  final pending = _pendingWechatCode;
+  if (pending != null) {
+    _pendingWechatCode = null;
+    cb(pending);
+  }
+}
+
+/// 登录页 dispose 或登录成功后调用：清空回调，并丢弃残留的暂存 code。
+void unregisterWechatCallback() {
+  globalWechatCallback = null;
+  _pendingWechatCode = null;
+}
+
 /// 登录门：等待本地登录态恢复完成后，再决定展示登录页还是主框架。
 ///
 /// 参考 f-cat 的 AuthGate：恢复是异步的，首帧必须先展示等待态，
