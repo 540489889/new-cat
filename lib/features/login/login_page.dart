@@ -535,7 +535,10 @@ class _LoginPageState extends State<LoginPage> {
           const SizedBox(height: 32),
           _PrimaryButton(
             label: _submitting ? '登录中...' : '验证并登录',
-            onPressed: _submitting ? null : _submitCode,
+            // 手机号/验证码格式未通过时置灰，避免点了才提示错误。
+            onPressed: (_submitting || !_phoneValid || !_codeValid)
+                ? null
+                : _submitCode,
           ),
         ],
       ),
@@ -886,7 +889,8 @@ class _PrimaryButton extends StatelessWidget {
           height: 52,
           width: double.infinity,
           decoration: BoxDecoration(
-            color: token.brandColor,
+            // 禁用时用灰色，置灰效果更直观。
+            color: disabled ? const Color(0xFFC9BCC2) : token.brandColor,
             borderRadius: BorderRadius.circular(26),
           ),
           alignment: Alignment.center,
