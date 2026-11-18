@@ -404,8 +404,12 @@
   if (![backgroundColor isEqual: nil]) {
     model.backgroundColor = [self getColor: backgroundColor];
   }
-  NSString * backgroundImagePath = [viewConfig stringValueForKey: @"backgroundPath" defaultValue: nil];
-  if (![backgroundImagePath isEqual: nil]) {
+  /// 兼容Flutter侧 pageBackgroundPath（其他模式用的字段名），优先取它
+  NSString * backgroundImagePath = [viewConfig stringValueForKey: @"pageBackgroundPath" defaultValue: nil];
+  if (backgroundImagePath == nil || [backgroundImagePath length] == 0) {
+    backgroundImagePath = [viewConfig stringValueForKey: @"backgroundPath" defaultValue: nil];
+  }
+  if (backgroundImagePath != nil && [backgroundImagePath length] > 0) {
     model.backgroundImage = [self changeUriPathToImage: backgroundImagePath];
   }
   /// 背景设置 END

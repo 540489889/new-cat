@@ -268,7 +268,12 @@ class _LoginPageState extends State<LoginPage> {
       logBtnMarginLeftAndRight: 20,
       logBtnLayoutGravity: Gravity.centerHorizntal,
       logBtnToastHidden: false,
-      logBtnBackgroundPath: 'assets/images/icon/logo_btn_bg.png',
+      // 必须为逗号分隔的 3 张图（正常/按下/禁用）两端才生效；三态复用同一张。
+      logBtnBackgroundPath: [
+        'assets/images/icon/logo_btn_bg.png',
+        'assets/images/icon/logo_btn_bg.png',
+        'assets/images/icon/logo_btn_bg.png',
+      ].join(','),
       switchAccText: '验证码登录',
       switchOffsetY: switchY,
       switchOffsetY_B: -1,
@@ -291,6 +296,9 @@ class _LoginPageState extends State<LoginPage> {
       checkBoxWidth: 15,
       checkBoxHeight: 15,
       checkboxHidden: false,
+      // 用主题色勾选图，避免 SDK 默认勾选框在白色背景上看不清。
+      uncheckedImgPath: 'assets/images/icon/checkbox_unchecked.png',
+      checkedImgPath: 'assets/images/icon/checkbox_checked.png',
       privacyState: false,
       // 不显示 SDK 授权页内置的第三方登录按钮（微信 / 苹果）。
       isHiddenCustom: true,
