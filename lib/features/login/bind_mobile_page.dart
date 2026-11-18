@@ -100,7 +100,12 @@ class _BindMobilePageState extends State<BindMobilePage> {
           useDefaultBack: true,
           useSafeArea: true,
         ),
-        body: SingleChildScrollView(
+        // 点击空白处收起键盘：GestureDetector 默认 deferToChild，
+        // 输入框/按钮等子控件优先接管手势，点到空白区才命中这里。
+        body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(24, 24, 24, bottom + 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -122,8 +127,14 @@ class _BindMobilePageState extends State<BindMobilePage> {
                     Expanded(
                       child: TextField(
                         controller: _phoneCtrl,
-                        keyboardType: TextInputType.phone,
+                        // 用 number 而非 phone：iOS 会对 phone 键盘推断出
+                        // UITextContentType.telephoneNumber，弹出 "Scan Phone Number"
+                        // 相机扫描建议；number 仍是纯数字键盘，不影响 11 位手机号输入。
+                        keyboardType: TextInputType.number,
                         maxLength: 11,
+                        autofillHints: const [],
+                        enableSuggestions: false,
+                        autocorrect: false,
                         inputFormatters: [
                           FilteringTextInputFormatter.digitsOnly,
                         ],
@@ -131,6 +142,11 @@ class _BindMobilePageState extends State<BindMobilePage> {
                         decoration: const InputDecoration(
                           hintText: '手机号',
                           border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          focusedErrorBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
                           counterText: '',
                         ),
                       ),
@@ -147,6 +163,9 @@ class _BindMobilePageState extends State<BindMobilePage> {
                         controller: _codeCtrl,
                         keyboardType: TextInputType.number,
                         maxLength: 6,
+                        autofillHints: const [],
+                        enableSuggestions: false,
+                        autocorrect: false,
                         inputFormatters: [
                           FilteringTextInputFormatter.digitsOnly,
                         ],
@@ -154,6 +173,11 @@ class _BindMobilePageState extends State<BindMobilePage> {
                         decoration: const InputDecoration(
                           hintText: '验证码',
                           border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          focusedErrorBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
                           counterText: '',
                         ),
                       ),
@@ -199,6 +223,7 @@ class _BindMobilePageState extends State<BindMobilePage> {
             ],
           ),
         ),
+      ),
       ),
     );
   }
