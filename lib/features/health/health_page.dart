@@ -564,7 +564,7 @@ class _Bullet extends StatelessWidget {
 
 /// 功能入口宫格：左侧「体征记录」整高卡 + 右侧「健康/护理」「智能报告」两卡叠放。
 class _EntryGrid extends StatelessWidget {
-  _EntryGrid();
+  const _EntryGrid();
 
   @override
   Widget build(BuildContext context) {
@@ -596,131 +596,142 @@ class _EntryGrid extends StatelessWidget {
     Widget subText(String sub) =>
         Text(sub, style: const TextStyle(fontSize: 11, color: HealthPage._sub));
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 左：体征记录高卡（标题 + 副标题 + 标签 + 右下角大图标）
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const VitalRecordsPage()),
-                ),
-                child: card(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      titleRow('体征记录'),
-                      const SizedBox(height: 4),
-                      subText('体重/睡眠/如厕'),
-                      const SizedBox(height: 8),
-                      const _Tag(
-                        '健康良好',
-                        bg: HealthPage._goodBg,
-                        ink: HealthPage._goodInk,
-                      ),
-                      const Spacer(),
-                      Align(
-                        alignment: Alignment.bottomRight,
-                        child: Container(
-                          width: 56,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFECEEFA),
-                            borderRadius: BorderRadius.circular(13),
-                          ),
-                          alignment: Alignment.center,
-                          child: Image.asset(
-                            'assets/images/icon/m-b1.png',
-                            width: 34,
-                            height: 34,
+    // withNoTextScaling：该宫格是固定尺寸的图标卡，系统大字体缩放会把
+    // IntrinsicHeight 预估高度撑爆，导致偶发 bottom overflow
+    return MediaQuery.withNoTextScaling(
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 左：体征记录高卡（标题 + 副标题 + 标签，右下角大图标绝对定位）
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const VitalRecordsPage()),
+                  ),
+                  child: card(
+                    // 图标用 Positioned 移出 Column 固定高度链：
+                    // Column 固定内容只剩 ~71px，即使 dry/wet 布局有几 px
+                    // 差异也不会再溢出（原来图标 56px 在链上极易触顶）
+                    child: Stack(
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            titleRow('体征记录'),
+                            const SizedBox(height: 4),
+                            subText('体重/睡眠/如厕'),
+                            const SizedBox(height: 8),
+                            const _Tag(
+                              '健康良好',
+                              bg: HealthPage._goodBg,
+                              ink: HealthPage._goodInk,
+                            ),
+                          ],
+                        ),
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFECEEFA),
+                              borderRadius: BorderRadius.circular(13),
+                            ),
+                            alignment: Alignment.center,
+                            child: Image.asset(
+                              'assets/images/icon/m-b1.png',
+                              width: 34,
+                              height: 34,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 10),
-            // 右：两卡上下叠放，图标在右侧垂直居中
-            Expanded(
-              child: Column(
-                children: [
-                  Expanded(
-                    child: card(
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                titleRow('健康/护理'),
-                                const SizedBox(height: 4),
-                                subText('清洁/疫苗/用药'),
-                              ],
+              const SizedBox(width: 10),
+              // 右：两卡上下叠放，图标在右侧垂直居中
+              Expanded(
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: card(
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  titleRow('健康/护理'),
+                                  const SizedBox(height: 4),
+                                  subText('清洁/疫苗/用药'),
+                                ],
+                              ),
                             ),
-                          ),
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE5F3EE),
-                              borderRadius: BorderRadius.circular(13),
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE5F3EE),
+                                borderRadius: BorderRadius.circular(13),
+                              ),
+                              alignment: Alignment.center,
+                              child: Image.asset(
+                                'assets/images/icon/m-b2.png',
+                                width: 26,
+                                height: 26,
+                              ),
                             ),
-                            alignment: Alignment.center,
-                            child: Image.asset(
-                              'assets/images/icon/m-b2.png',
-                              width: 26,
-                              height: 26,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  Expanded(
-                    child: card(
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                titleRow('智能报告'),
-                                const SizedBox(height: 4),
-                                subText('周报/月报/年报'),
-                              ],
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: card(
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  titleRow('智能报告'),
+                                  const SizedBox(height: 4),
+                                  subText('周报/月报/年报'),
+                                ],
+                              ),
                             ),
-                          ),
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF2EDF4),
-                              borderRadius: BorderRadius.circular(13),
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF2EDF4),
+                                borderRadius: BorderRadius.circular(13),
+                              ),
+                              alignment: Alignment.center,
+                              child: Image.asset(
+                                'assets/images/icon/m-b3.png',
+                                width: 26,
+                                height: 26,
+                              ),
                             ),
-                            alignment: Alignment.center,
-                            child: Image.asset(
-                              'assets/images/icon/m-b3.png',
-                              width: 26,
-                              height: 26,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

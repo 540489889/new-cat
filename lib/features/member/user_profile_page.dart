@@ -156,9 +156,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
   Future<void> _logout() async {
     final ok = await showConfirmDialog(
       context,
-      title: '退出登录',
       content: '确定要退出当前账号吗？',
       confirmText: '退出登录',
+      danger: true,
     );
     if (!ok) return;
     // AuthGate 检测登出后会 popUntil 清空导航栈，回到一键登录页
@@ -168,9 +168,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
   Future<void> _deleteAccount() async {
     final ok = await showConfirmDialog(
       context,
-      title: '注销账户',
       content: '注销后账号数据将无法恢复，确定继续吗？',
       confirmText: '注销',
+      danger: true,
     );
     if (!ok || !mounted) return;
     // 后端注销接口尚未对接（参考项目同样为 TODO）

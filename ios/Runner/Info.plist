@@ -38,11 +38,23 @@
 				<string>wxcf5ef326f4119c89</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>alipay</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>alipay</string>
+			</array>
+		</dict>
 	</array>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>weixin</string>
 		<string>weixinULAPI</string>
+		<string>alipay</string>
+		<string>alipays</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>用于拍摄照片并上传作为头像</string>

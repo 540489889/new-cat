@@ -368,8 +368,11 @@ class _PetProfileCardState extends State<_PetProfileCard> {
     // 纵向轮播随收起淡出（高度收为 0），由横向迷你栏接管
     final avatarH = lerpDouble(96, 0, t)!;
     final avatarSize = lerpDouble(80, 36, t)!;
-    // 天数 / 属性行：收缩到一半时开始淡出，收起后完全隐藏
-    final fadeOut = (1 - t * 2).clamp(0.0, 1.0);
+    // 错峰淡出：属性行最先消失、天数其次、名字最后，
+    // 间隔拉大让"自下而上逐层收拢"肉眼可辨
+    final nameFade = (1 - t * 1.2).clamp(0.0, 1.0);
+    final daysFade = (1 - t * 2.4).clamp(0.0, 1.0);
+    final statsFade = (1 - t * 4.0).clamp(0.0, 1.0);
     // 收起时卡片融入标题栏：白底渐变为「与背后渐变衔接的颜色」、
     // 深色文字渐变为白色。收起条背景对齐背后渐变的对应区段，
     // 既遮住从下方滚过的内容，视觉上又与标题那块渐变融为一体。
@@ -454,15 +457,16 @@ class _PetProfileCardState extends State<_PetProfileCard> {
       ),
       // 白卡样式（保留原始设计）：白色圆角卡片 + 四角浅色同心圆装饰，
       // 浮于渐变头部之上，渐变在卡片四周/上方透出作为页面顶部背景；
-      // 收起时白底渐变为与背后衔接的渐变色，与标题栏融为一体
+      // 收起时白底过渡到与背后衔接的渐变色——白→渐变在前半程完成，
+      // 避免收起中段长时间残留"发白"的混色
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(lerpDouble(20, 0, t)!),
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Color.lerp(Colors.white, g0, t)!,
-            Color.lerp(Colors.white, g1, t)!,
+            Color.lerp(Colors.white, g0, (t * 2).clamp(0.0, 1.0))!,
+            Color.lerp(Colors.white, g1, (t * 2).clamp(0.0, 1.0))!,
           ],
         ),
       ),
@@ -491,55 +495,46 @@ class _PetProfileCardState extends State<_PetProfileCard> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     avatarWidget,
-                    // 名字 + 右箭头（点击进入宠物详情）：
-                    // 收起时整行隐藏（heightFactor 收为 0 + 同步淡出），只留小头像
-                    ClipRect(
-                      child: Align(
-                        alignment: Alignment.topCenter,
-                        heightFactor: 1 - t,
-                        child: Opacity(
-                          opacity: fadeOut,
-                          child: Column(
-                            children: [
-                              SizedBox(height: lerpDouble(8, 4, t)),
-                              GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () => Navigator.of(context)
-                                    .pushNamed('/pet/detail'),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Flexible(
-                                      child: Text(
-                                        name,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w700,
-                                          color: nameColor,
-                                        ),
-                                      ),
-                                    ),
-                                    Icon(
-                                      Icons.chevron_right,
-                                      size: 18,
+                    // 名字 / 陪伴天数 / 属性行：收起时自下而上错峰淡出。
+                    // 不做高度裁剪——裁剪会让名字残半截、与下方天数行叠出重影
+                    Column(
+                      children: [
+                        SizedBox(height: lerpDouble(8, 4, t)),
+                        // 名字 + 右箭头（点击进入宠物详情）：最后消失
+                        Opacity(
+                          opacity: nameFade,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () =>
+                                Navigator.of(context).pushNamed('/pet/detail'),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    name,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
                                       color: nameColor,
                                     ),
-                                  ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                                Icon(
+                                  Icons.chevron_right,
+                                  size: 18,
+                                  color: nameColor,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                    // 陪伴天数行：点击进入宠物详情页（收起时淡出并被裁剪）
-                    Opacity(
-                      opacity: fadeOut,
-                      child: Column(
-                        children: [
-                          const SizedBox(height: 4),
-                          GestureDetector(
+                        SizedBox(height: lerpDouble(4, 1, t)!),
+                        // 陪伴天数行：点击进入宠物详情页（先于名字消失）
+                        Opacity(
+                          opacity: daysFade,
+                          child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onTap: () =>
                                 Navigator.of(context).pushNamed('/pet/detail'),
@@ -551,9 +546,12 @@ class _PetProfileCardState extends State<_PetProfileCard> {
                               ),
                             ),
                           ),
-                          const SizedBox(height: 16),
-                          // 属性行：品种/性别/年龄/绝育/体重，均匀分布
-                          Padding(
+                        ),
+                        SizedBox(height: lerpDouble(16, 4, t)!),
+                        // 属性行：品种/性别/年龄/绝育/体重（最先消失）
+                        Opacity(
+                          opacity: statsFade,
+                          child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 20),
                             child: Row(
                               children: [
@@ -587,8 +585,8 @@ class _PetProfileCardState extends State<_PetProfileCard> {
                               ],
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

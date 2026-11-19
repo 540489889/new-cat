@@ -1,0 +1,2 @@
+# All rules moved to app-level proguard-rules.pro
+# This file is intentionally empty to avoid consumer proguard validation errors.

@@ -230,21 +230,55 @@ class _ShopCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _Card(
-      child: Row(
-        children: [
-          const _IconBox(asset: 'assets/images/icon/m-d2.png'),
-          const SizedBox(width: 12),
-          const Text('商城',
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: SettingsPage._ink)),
-          const Spacer(),
-          const Text('购买智能设备，解锁更多功能',
-              style: TextStyle(fontSize: 11, color: SettingsPage._sub)),
-          const Icon(Icons.chevron_right, size: 16, color: SettingsPage._sub),
-        ],
+    return Column(
+      children: [
+        _tappable(
+          context,
+          asset: 'assets/images/icon/m-d2.png',
+          title: '商城',
+          note: '购买智能设备，解锁更多功能',
+          onTap: () => Navigator.of(context).pushNamed(AppRoutes.shop),
+        ),
+        Container(height: 1, color: SettingsPage._divider),
+        _tappable(
+          context,
+          asset: 'assets/images/icon/m-d2.png',
+          title: '我的订单',
+          note: '查看订单与物流',
+          onTap: () =>
+              Navigator.of(context).pushNamed(AppRoutes.shopOrderList),
+        ),
+      ],
+    );
+  }
+
+  Widget _tappable(
+    BuildContext context, {
+    required String asset,
+    required String title,
+    required String note,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: _Card(
+        child: Row(
+          children: [
+            _IconBox(asset: asset),
+            const SizedBox(width: 12),
+            Text(title,
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: SettingsPage._ink)),
+            const Spacer(),
+            Text(note,
+                style: const TextStyle(
+                    fontSize: 11, color: SettingsPage._sub)),
+            const Icon(Icons.chevron_right, size: 16, color: SettingsPage._sub),
+          ],
+        ),
       ),
     );
   }

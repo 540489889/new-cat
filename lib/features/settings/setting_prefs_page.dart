@@ -93,9 +93,9 @@ class SettingPrefsPage extends StatelessWidget {
   Future<void> _confirmLogout(BuildContext context) async {
     final ok = await showConfirmDialog(
       context,
-      title: '退出登录',
       content: '确定要退出当前账号吗？',
       confirmText: '退出登录',
+      danger: true,
     );
     if (ok) {
       // 登出会同步 notifyListeners；AuthGate 检测到登出后会 popUntil

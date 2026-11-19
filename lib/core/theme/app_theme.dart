@@ -15,10 +15,20 @@ class AppTheme {
   static const Color brandColor = Color(0xFF7F6370);
 
   /// 浅色主题 Token。
+  ///
+  /// 注意：TDesign 的按压/长按/聚焦/禁用态用的是 brandColorActive / brandColorLight /
+  /// brandColorLightActive / brandColorFocus / brandColorDisabled 等独立 Token，
+  /// 不覆盖会回落到默认腾讯蓝（brandColor3/8 等），导致按钮点击时变蓝，
+  /// 必须与 brandColor 一并覆盖。
   static final TThemeData lightToken = _defaultToken.copyWith(
     name: 'appLight',
     colorMap: {
       'brandColor': brandColor,
+      'brandColorActive': const Color(0xFF6A5460), // fill 按钮按下（加深）
+      'brandColorDisabled': const Color(0xFFD9CBD2), // 禁用态
+      'brandColorLight': const Color(0xFFF4EEF1), // 长按高亮
+      'brandColorLightActive': const Color(0xFFEADCE3), // 按下激活
+      'brandColorFocus': const Color(0xFFF4EEF1), // 聚焦
       'bgColorPage': const Color(0xFFF7F7F8),
     },
   );
@@ -27,7 +37,14 @@ class AppTheme {
   static final TThemeData darkToken = (_defaultToken.dark ?? _defaultToken)
       .copyWith(
         name: 'appDark',
-        colorMap: {'brandColor': const Color(0xFFA88C99)},
+        colorMap: {
+          'brandColor': const Color(0xFFA88C99),
+          'brandColorActive': const Color(0xFF8F7582),
+          'brandColorDisabled': const Color(0xFF3A3036),
+          'brandColorLight': const Color(0xFF3A3036),
+          'brandColorLightActive': const Color(0xFF463A41),
+          'brandColorFocus': const Color(0xFF3A3036),
+        },
       );
 
   /// 浅色 ThemeData。
