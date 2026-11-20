@@ -53,6 +53,9 @@ class _HomePageState extends State<HomePage> {
     final topInset = MediaQuery.of(context).padding.top;
     final bottomInset = MediaQuery.of(context).padding.bottom;
     final screenH = MediaQuery.of(context).size.height;
+    // 日报对应昨日数据（吸顶标题条与摘要卡共用同一日期）
+    final now = DateTime.now().subtract(const Duration(days: 1));
+    final dailyDateText = '${now.month}月${now.day}日 ${now.hour}:00';
     // 视频占顶部约 38% 屏高，作为「随滚动离场的 Hero 头」；
     // 与下方内容同属一条滚动流，一起上移，消除「钉死视频 + 独立列表」的割裂感
     final videoBandH = screenH * 0.4;
@@ -93,18 +96,26 @@ class _HomePageState extends State<HomePage> {
                         .clamp(0.0, double.infinity),
                   ),
                 ),
-                // 内容：仅卡片本身（各自白底 + 阴影），无整块面板背景，
-                // 卡片直接浮在视频之上，让视频完整透出、更好地融入
+                // AI日报渐变标题条：滚动到顶部后吸顶固定（等高 pinned）
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _FixedHeightHeader(
+                    height: _AiDailyHeader.height,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: _AiDailyHeader(dateText: dailyDateText),
+                    ),
+                  ),
+                ),
+                // 摘要区 + 其余内容
                 SliverToBoxAdapter(
                   child: Container(
-                    // 左右留 12；顶部留白 0（配合上面 -20，首张卡片正好压在视频底部）；
-                    // 底部留白 = bottomInset + 76：避开底部胶囊 TabBar，并给 AI 浮条
-                    // 上方留出约 20px 安全距离（浮条高 48、距底 bottomInset+8，顶部到 bottomInset+56）
+                    // 左右留 12；底部留白 = bottomInset + 76：避开底部胶囊 TabBar 并给 AI 浮条留位
                     padding: EdgeInsets.fromLTRB(12, 0, 12, bottomInset + 76),
                     child: const Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _AiDailyCard(),
+                        _AiDailySummary(),
                         SizedBox(height: 12),
                         _AgentDynamicCard(),
                         SizedBox(height: 12),
@@ -612,10 +623,72 @@ class _AiBar extends StatelessWidget {
   }
 }
 
-/// AI 日报板块：展示昨日宠物设备数据摘要（饮水/进食/如厕）与健康标签。
-/// 数据当前为本地 mock，后续接入后端日报接口后替换即可。
-class _AiDailyCard extends StatelessWidget {
-  const _AiDailyCard();
+/// 等高吸顶 SliverDelegate：minExtent == maxExtent == 固定高度，
+/// 避免 layoutExtent > paintExtent 的 SliverGeometry 异常。
+class _FixedHeightHeader extends SliverPersistentHeaderDelegate {
+  const _FixedHeightHeader({required this.height, required this.child});
+
+  final double height;
+  final Widget child;
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(
+          BuildContext context, double shrinkOffset, bool overlapsContent) =>
+      child;
+
+  @override
+  bool shouldRebuild(covariant _FixedHeightHeader old) => false;
+}
+
+/// AI日报渐变标题条：滚动时吸顶固定。
+class _AiDailyHeader extends StatelessWidget {
+  const _AiDailyHeader({required this.dateText});
+
+  /// 标题条固定高度（padding 12*2 + 文字约 18）
+  static const double height = 42;
+
+  final String dateText;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      // 顶部圆角：首屏与摘要卡拼成完整卡片；吸顶时圆角上沿会被背景板遮住
+      decoration: const BoxDecoration(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [Color(0xFF7F6370), Color(0xFF9E6F84)],
+        ),
+      ),
+      child: Row(
+        children: [
+          const Text('AI日报',
+              style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white)),
+          const Spacer(),
+          Text(dateText,
+              style: const TextStyle(fontSize: 12, color: Colors.white)),
+        ],
+      ),
+    );
+  }
+}
+
+/// AI 日报摘要区：展示昨日宠物设备数据摘要（饮水/进食/如厕）与健康标签。
+/// 标题条已拆为独立吸顶组件 [_AiDailyHeader]，这里只保留白色摘要卡。
+class _AiDailySummary extends StatelessWidget {
+  const _AiDailySummary();
 
   static const Color _theme = Color(0xFF7F6370);
   static const Color _titleColor = Color(0xFF3D2E33);
@@ -624,19 +697,15 @@ class _AiDailyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 日期取昨日（日报对应的是昨天数据）
-    final now = DateTime.now().subtract(const Duration(days: 1));
-    final dateText = '${now.month}月${now.day}日 ${now.hour}:00';
     const title = '昨日饮水180ml，进食62g，如厕3次。';
     const subtitle = '基于昨日设备数据生成';
     const tags = ['饮食正常', '活动充足', '健康稳定'];
 
     return Container(
-      // 底部 margin 4：叠加 Transform 上移的 20px，与下个板块视觉间距约 24
-      margin: const EdgeInsets.fromLTRB(0, 0, 0, 0),
+      // 顶部直角：与吸顶标题条无缝拼接成一张卡片
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -645,41 +714,7 @@ class _AiDailyCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 头部：左→右主题色渐变栏
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: const BoxDecoration(
-              borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-              gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [Color(0xFF7F6370), Color(0xFF9E6F84)],
-              ),
-            ),
-            child: Row(
-              children: [
-                const Text(
-                  'AI日报',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  dateText,
-                  style: const TextStyle(fontSize: 12, color: Colors.white),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Padding(
+      child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -776,8 +811,6 @@ class _AiDailyCard extends StatelessWidget {
               ],
             ),
           ),
-        ],
-      ),
     );
   }
 }
