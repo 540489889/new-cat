@@ -41,17 +41,24 @@ class PetPage extends StatefulWidget {
 
   /// 取顶部渐变在纵向 [y]（相对渐变层顶部）处的颜色（分段线性插值）。
   /// 用于档案卡收起态背景，使其与背后渐变完全衔接、融为一体。
+  ///
+  /// 注意：渐变尾部带透明度（0x00E5D2DC），若直接用作卡片背景会让卡片半透明、
+  /// 透出下方白色内容形成「白蒙层」。这里把取到的颜色按 alpha 合成到页面底色
+  /// [_bg] 上，返回不透明色——既与背后实际观感一致，又保证卡片始终不透光。
   static Color gradientColorAt(double y, double bgH) {
     final p = (y / bgH).clamp(0.0, 1.0);
     final stops = _topGradient.stops!;
     final colors = _topGradient.colors;
+    Color sampled = colors.last;
     for (int i = 0; i < stops.length - 1; i++) {
       if (p <= stops[i + 1]) {
         final f = ((p - stops[i]) / (stops[i + 1] - stops[i])).clamp(0.0, 1.0);
-        return Color.lerp(colors[i], colors[i + 1], f)!;
+        sampled = Color.lerp(colors[i], colors[i + 1], f)!;
+        break;
       }
     }
-    return colors.last;
+    // 按 alpha 合成到页面底色，得到不透明的最终色
+    return Color.lerp(_bg, sampled.withValues(alpha: 1), sampled.a)!;
   }
 
   @override
@@ -455,18 +462,17 @@ class _PetProfileCardState extends State<_PetProfileCard> {
         lerpDouble(12, 0, t)!,
         12,
       ),
-      // 白卡样式（保留原始设计）：白色圆角卡片 + 四角浅色同心圆装饰，
-      // 浮于渐变头部之上，渐变在卡片四周/上方透出作为页面顶部背景；
-      // 收起时白底过渡到与背后衔接的渐变色——白→渐变在前半程完成，
-      // 避免收起中段长时间残留"发白"的混色
+      // 白卡样式（保留原始设计）：展开态白色圆角卡片 + 四角浅色同心圆装饰。
+      // 收起时白底必须「立刻」褪成背后渐变色——若过渡太慢，收起前段白卡仍盖在
+      // 渐变上，看起来就是一层「白蒙层」。用 t*8 让白色在收起极早期就褪尽。
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(lerpDouble(20, 0, t)!),
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Color.lerp(Colors.white, g0, (t * 2).clamp(0.0, 1.0))!,
-            Color.lerp(Colors.white, g1, (t * 2).clamp(0.0, 1.0))!,
+            Color.lerp(Colors.white, g0, (t * 8).clamp(0.0, 1.0))!,
+            Color.lerp(Colors.white, g1, (t * 8).clamp(0.0, 1.0))!,
           ],
         ),
       ),

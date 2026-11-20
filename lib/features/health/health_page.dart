@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -34,9 +35,26 @@ class HealthPage extends StatefulWidget {
 class _HealthPageState extends State<HealthPage> {
   final ScrollController _scrollController = ScrollController();
 
+  /// 头像折叠进度 0（展开大轮播）→ 1（完全收起）。
+  /// 标题栏右侧头像据此淡入，与折叠头联动。
+  final ValueNotifier<double> _fold = ValueNotifier<double>(0);
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(() {
+      final t = (_scrollController.offset /
+              (_AvatarFoldDelegate.expandedExtent -
+                  _AvatarFoldDelegate.collapsedExtent))
+          .clamp(0.0, 1.0);
+      if ((_fold.value - t).abs() > 0.01) _fold.value = t;
+    });
+  }
+
   @override
   void dispose() {
     _scrollController.dispose();
+    _fold.dispose();
     super.dispose();
   }
 
@@ -56,7 +74,7 @@ class _HealthPageState extends State<HealthPage> {
           top: 0,
           left: 0,
           right: 0,
-          child: _TitleBar(topInset: topInset),
+          child: _TitleBar(topInset: topInset, fold: _fold),
         ),
         // 滚动内容盒子：从标题栏下方开始。
         // 头像板块作为折叠头 pinned 在此盒子顶部：上滑收起为迷你栏，
@@ -105,12 +123,15 @@ class _HealthPageState extends State<HealthPage> {
   }
 }
 
-/// 固定标题栏：状态栏 + 「健康 / 日期」，不随滚动。
-/// 紫粉渐变与头像区、收起态迷你栏连成一条完整渐变带。
+/// 固定标题栏：状态栏 +「健康 / 日期」+ 收起时淡入的当前宠物头像。
+/// 头像融入到标题栏右侧，替代原来单独占一行的迷你栏，零额外高度。
 class _TitleBar extends StatelessWidget {
-  const _TitleBar({required this.topInset});
+  const _TitleBar({required this.topInset, required this.fold});
 
   final double topInset;
+
+  /// 头像折叠进度 0→1，控制右侧头像淡入
+  final ValueListenable<double> fold;
 
   @override
   Widget build(BuildContext context) {
@@ -126,27 +147,85 @@ class _TitleBar extends StatelessWidget {
           colors: [Color(0xFF8E6B84), Color(0xFFB48CA3)],
         ),
       ),
-      alignment: Alignment.bottomLeft,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Text('健康',
-                style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white)),
-            const SizedBox(width: 8),
-            Padding(
-              padding: const EdgeInsets.only(top: 3),
-              child: Text('9月28日',
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white.withValues(alpha: 0.85))),
+      // 不用 Container.alignment：那会让子级按固有宽度布局，
+      // Row 里的 Expanded 拿不到空间，右侧头像会被挤出屏幕。
+      // 改用 Column 贴底 + stretch 撑满整行宽度。
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Text('健康',
+                    style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white)),
+                const SizedBox(width: 8),
+                Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: Text('9月28日',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withValues(alpha: 0.85))),
+                ),
+                // 收起时右侧淡入当前宠物头像（可点击切换），不额外占一行
+                ValueListenableBuilder<double>(
+                  valueListenable: fold,
+                  builder: (context, t, _) {
+                    final petState = context.watch<PetState>();
+                    final selected = petState.selectedPet;
+                    return Expanded(
+                      child: Opacity(
+                        opacity: t,
+                        child: IgnorePointer(
+                          ignoring: t < 0.4,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              final pets = petState.pets;
+                              if (pets.isEmpty) return;
+                              petState.selectPet(
+                                  (petState.selectedIndex + 1) % pets.length);
+                            },
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                _PetAvatar(
+                                    head: selected?.headimg ?? '',
+                                    ringed: true,
+                                    size: 28),
+                                const SizedBox(width: 6),
+                                ConstrainedBox(
+                                  constraints:
+                                      const BoxConstraints(maxWidth: 80),
+                                  child: Text(
+                                    selected?.nickname ?? '我的宠物',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white),
+                                  ),
+                                ),
+                                const Icon(Icons.chevron_right,
+                                    size: 16, color: Colors.white),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -158,7 +237,9 @@ class _AvatarFoldDelegate extends SliverPersistentHeaderDelegate {
   const _AvatarFoldDelegate();
 
   static const double expandedExtent = 110;
-  static const double collapsedExtent = 38;
+
+  /// 完全收起为 0 高度：头像移到标题栏右侧，不再单独占一行
+  static const double collapsedExtent = 0;
 
   @override
   double get maxExtent => expandedExtent;
@@ -180,7 +261,8 @@ class _AvatarFoldDelegate extends SliverPersistentHeaderDelegate {
       false;
 }
 
-/// 头像折叠卡：t=0 大头像轮播，t=1 收起为通栏迷你栏（小头像 + 名字 + 箭头）。
+/// 头像折叠卡：只承载展开态大头像轮播，随折叠淡出并收缩到 0 高度。
+/// 收起态头像移到固定标题栏右侧显示，因此这里不再有迷你栏内容。
 class _AvatarFoldCard extends StatelessWidget {
   const _AvatarFoldCard({required this.collapsed});
 
@@ -189,80 +271,27 @@ class _AvatarFoldCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = collapsed.clamp(0.0, 1.0);
-    final petState = context.watch<PetState>();
-    final selected = petState.selectedPet;
-    final name = selected?.nickname ?? '';
-
-    // 背景层始终不透明：展开时与标题栏底部同色渐隐到页面暖米底，
-    // 收起时加深为通栏色带。避免过去两层半透明叠加露出白色蒙层。
-    final bgTop = Color.lerp(
-      const Color(0xFFB48CA3), const Color(0xFFB48CA3), t)!;
-    final bgBottom = Color.lerp(
-      HealthPage._bg, const Color(0xFFC9A4B6), t)!;
-
     return Stack(
       children: [
-        // 单一不透明背景层
+        // 不透明渐变背景：展开时与标题栏底部同色，向下渐隐到页面暖米底
         Positioned.fill(
           child: DecoratedBox(
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [bgTop, bgBottom],
+                colors: [Color(0xFFB48CA3), HealthPage._bg],
               ),
             ),
           ),
         ),
-        // 展开态内容：大头像轮播，随收起淡出
+        // 大头像轮播：随收起淡出（收缩过程中始终可点，完全收起后无高度不再可见）
         Positioned.fill(
           child: Opacity(
             opacity: 1 - t,
             child: IgnorePointer(
               ignoring: t > 0.9,
               child: const Center(child: _PetAvatarCarousel()),
-            ),
-          ),
-        ),
-        // 收起态内容：小头像 + 名字 + 箭头，点击切换下一只宠物
-        Positioned.fill(
-          child: Opacity(
-            opacity: t,
-            child: IgnorePointer(
-              ignoring: t < 0.1,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  final pets = petState.pets;
-                  if (pets.isEmpty) return;
-                  petState.selectPet(
-                      (petState.selectedIndex + 1) % pets.length);
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      _PetAvatar(
-                          head: selected?.headimg ?? '',
-                          ringed: true,
-                          size: 30),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          name.isEmpty ? '我的宠物' : name,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white),
-                        ),
-                      ),
-                      const Icon(Icons.chevron_right,
-                          size: 18, color: Colors.white),
-                    ],
-                  ),
-                ),
-              ),
             ),
           ),
         ),
