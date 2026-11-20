@@ -73,6 +73,62 @@ class _PayOrderPageState extends State<PayOrderPage> {
 
   double get _total => (_product?.price ?? 0) * _quantity;
 
+  /// 数量步进器：京东商城样式
+  /// ┌────┬─────┬────┐
+  /// │ −  │  2  │ +  │  方形描边、两侧浅灰底按钮、中间白底数字
+  /// └────┴─────┴────┘
+  /// 点击区 40px 高（TStepper 最大仅 26px，太小不好点）。
+  Widget _quantityStepper() {
+    final canMinus = _quantity > 1;
+    final canAdd = _quantity < 99;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(4),
+      child: Container(
+        height: 36,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: const Color(0xFFDCDCDC)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _stepBtn(Icons.remove, canMinus,
+                () => setState(() => _quantity--)),
+            Container(
+              width: 44,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                border: Border(
+                  left: BorderSide(color: Color(0xFFE8E8E8)),
+                  right: BorderSide(color: Color(0xFFE8E8E8)),
+                ),
+              ),
+              child: Text('$_quantity',
+                  style: const TextStyle(
+                      fontSize: 15, color: ShopColors.ink)),
+            ),
+            _stepBtn(Icons.add, canAdd, () => setState(() => _quantity++)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _stepBtn(IconData icon, bool enabled, VoidCallback onTap) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: enabled ? onTap : null,
+      child: Container(
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        color: const Color(0xFFF7F7F7),
+        child: Icon(icon,
+            size: 16, color: enabled ? ShopColors.ink : ShopColors.sub),
+      ),
+    );
+  }
+
   Future<void> _pickAddress() async {
     if (_addresses.isEmpty) {
       final changed = await Navigator.of(context).push<bool>(
@@ -535,14 +591,18 @@ class _PayOrderPageState extends State<PayOrderPage> {
                                       color: ShopColors.price,
                                     ),
                                   ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              // 数量独立一行（京东确认订单样式）
+                              Row(
+                                children: [
+                                  const Text('数量',
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          color: ShopColors.sub)),
                                   const Spacer(),
-                                  TStepper(
-                                    value: _quantity,
-                                    min: 1,
-                                    max: 99,
-                                    onChanged: (v) =>
-                                        setState(() => _quantity = v.round()),
-                                  ),
+                                  _quantityStepper(),
                                 ],
                               ),
                             ],
@@ -556,25 +616,50 @@ class _PayOrderPageState extends State<PayOrderPage> {
                               _summaryRow('商品金额',
                                   '¥${p.price.toStringAsFixed(2)}'),
                               _summaryRow('运费', '免运费'),
-                              const SizedBox(height: 10),
-                              TextField(
-                                controller: _remarkCtrl,
-                                maxLength: 100,
-                                style: const TextStyle(
-                                    fontSize: 13, color: ShopColors.ink),
-                                decoration: InputDecoration(
-                                  hintText: '订单备注（选填）',
-                                  hintStyle: const TextStyle(
-                                      fontSize: 13, color: ShopColors.sub),
-                                  filled: true,
-                                  fillColor: const Color(0xFFF7F4F2),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 10),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide.none,
+                              const SizedBox(height: 12),
+                              const Divider(height: 1, color: Color(0xFFF1EAE4)),
+                              const SizedBox(height: 12),
+                              // 订单备注：行式（label + 无边框输入 + 计数）
+                              Row(
+                                children: [
+                                  const Text('订单备注',
+                                      style: TextStyle(
+                                          fontSize: 14,
+                                          color: ShopColors.ink)),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _remarkCtrl,
+                                      maxLength: 100,
+                                      style: const TextStyle(
+                                          fontSize: 14, color: ShopColors.ink),
+                                      decoration: InputDecoration(
+                                        isDense: true,
+                                        contentPadding: EdgeInsets.zero,
+                                        counterText: '',
+                                        hintText: '选填，给商家留言（100 字内）',
+                                        hintStyle: const TextStyle(
+                                            fontSize: 14,
+                                            color: ShopColors.sub),
+                                        // 全局主题可能给输入框设了边框，逐个状态显式关闭
+                                        border: InputBorder.none,
+                                        enabledBorder: InputBorder.none,
+                                        focusedBorder: InputBorder.none,
+                                        disabledBorder: InputBorder.none,
+                                        errorBorder: InputBorder.none,
+                                        focusedErrorBorder: InputBorder.none,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  ValueListenableBuilder<TextEditingValue>(
+                                    valueListenable: _remarkCtrl,
+                                    builder: (context, v, _) => Text(
+                                        '${v.text.length}/100',
+                                        style: const TextStyle(
+                                            fontSize: 12,
+                                            color: ShopColors.sub)),
+                                  ),
+                                ],
                               ),
                             ],
                           ),

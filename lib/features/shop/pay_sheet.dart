@@ -86,8 +86,7 @@ Future<String?> showPaySheet(
                             color: ShopColors.ink)),
                     const SizedBox(height: 14),
                     _payOption(
-                      icon: Icons.chat_bubble_rounded,
-                      color: const Color(0xFF07C160),
+                      imagePath: 'assets/images/icon/pay-1.png',
                       label: '微信支付',
                       index: 0,
                       selected: payMethod,
@@ -95,8 +94,7 @@ Future<String?> showPaySheet(
                     ),
                     const SizedBox(height: 12),
                     _payOption(
-                      icon: Icons.payment,
-                      color: const Color(0xFF1677FF),
+                      imagePath: 'assets/images/icon/pay-2.png',
                       label: '支付宝',
                       index: 1,
                       selected: payMethod,
@@ -176,8 +174,7 @@ Future<String?> showPaySheet(
 
 /// 支付方式选项卡片（白底描边，选中品牌粉框 + 实心勾）。
 Widget _payOption({
-  required IconData icon,
-  required Color color,
+  required String imagePath,
   required String label,
   required int index,
   required int selected,
@@ -199,7 +196,7 @@ Widget _payOption({
       ),
       child: Row(
         children: [
-          Icon(icon, size: 22, color: color),
+          Image.asset(imagePath, width: 26, height: 26),
           const SizedBox(width: 10),
           Text(label,
               style: const TextStyle(fontSize: 15, color: ShopColors.ink)),

@@ -224,35 +224,44 @@ class _DecoRings extends StatelessWidget {
   }
 }
 
-/// 商城入口：图标 + 标题 + 右侧说明
+/// 商城 / 我的订单入口：同一张白卡内两行，行间分隔线左对齐文字。
 class _ShopCard extends StatelessWidget {
   const _ShopCard();
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _tappable(
-          context,
-          asset: 'assets/images/icon/m-d2.png',
-          title: '商城',
-          note: '购买智能设备，解锁更多功能',
-          onTap: () => Navigator.of(context).pushNamed(AppRoutes.shop),
-        ),
-        Container(height: 1, color: SettingsPage._divider),
-        _tappable(
-          context,
-          asset: 'assets/images/icon/m-d2.png',
-          title: '我的订单',
-          note: '查看订单与物流',
-          onTap: () =>
-              Navigator.of(context).pushNamed(AppRoutes.shopOrderList),
-        ),
-      ],
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _row(
+            context,
+            asset: 'assets/images/icon/m-d2.png', // 购物袋 → 商城
+            title: '商城',
+            note: '购买智能设备，解锁更多功能',
+            onTap: () => Navigator.of(context).pushNamed(AppRoutes.shop),
+          ),
+          const SizedBox(height: 12),
+          const Padding(
+            // 卡片内边距 14 + 图标 40 + 间距 12 = 66，与标题文字左对齐
+            padding: EdgeInsets.only(left: 52),
+            child: Divider(height: 1, color: SettingsPage._divider),
+          ),
+          const SizedBox(height: 12),
+          _row(
+            context,
+            asset: 'assets/images/icon/m-d6.png', // 文档列表 → 订单
+            title: '我的订单',
+            note: '查看订单与物流',
+            onTap: () =>
+                Navigator.of(context).pushNamed(AppRoutes.shopOrderList),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _tappable(
+  Widget _row(
     BuildContext context, {
     required String asset,
     required String title,
@@ -262,23 +271,21 @@ class _ShopCard extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: _Card(
-        child: Row(
-          children: [
-            _IconBox(asset: asset),
-            const SizedBox(width: 12),
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: SettingsPage._ink)),
-            const Spacer(),
-            Text(note,
-                style: const TextStyle(
-                    fontSize: 11, color: SettingsPage._sub)),
-            const Icon(Icons.chevron_right, size: 16, color: SettingsPage._sub),
-          ],
-        ),
+      child: Row(
+        children: [
+          _IconBox(asset: asset),
+          const SizedBox(width: 12),
+          Text(title,
+              style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: SettingsPage._ink)),
+          const Spacer(),
+          Text(note,
+              style: const TextStyle(
+                  fontSize: 11, color: SettingsPage._sub)),
+          const Icon(Icons.chevron_right, size: 16, color: SettingsPage._sub),
+        ],
       ),
     );
   }
