@@ -4,11 +4,16 @@ import '../../features/components/components_page.dart';
 import '../../features/login/bind_mobile_page.dart';
 import '../../features/demo/demo_detail_page.dart';
 import '../../features/member/about_us_page.dart';
+import '../../features/member/feedback_page.dart';
 import '../../features/member/news_page.dart';
 import '../../features/member/notification_settings_page.dart';
 import '../../features/member/user_profile_page.dart';
 import '../../features/pet/highlights_page.dart';
+import '../../features/pet/pet_add_guide_page.dart';
 import '../../features/pet/pet_detail_page.dart';
+import '../../features/pet/pet_edit_page.dart';
+import '../../features/pet/pet_option_pages.dart';
+import '../../features/pet/pet_variety_page.dart';
 import '../../features/settings/setting_prefs_page.dart';
 import '../../features/shop/address_page.dart';
 import '../../features/shop/goods_detail_page.dart';
@@ -18,6 +23,7 @@ import '../../features/shop/pay_success_page.dart';
 import '../../features/shop/shop_page.dart';
 import '../../shared/widgets/status_bar_style.dart';
 import '../auth/auth_gate.dart';
+import '../pet/pet_models.dart';
 import '../shop/shop_models.dart';
 
 /// 路由表，新增页面时在这里登记。
@@ -29,12 +35,19 @@ class AppRoutes {
   static const String demoDetail = '/demo/detail';
   static const String components = '/components';
   static const String petDetail = '/pet/detail';
+  static const String petAdd = '/pet/add';
+  static const String petEdit = '/pet/edit';
+  static const String petType = '/pet/select/type';
+  static const String petGender = '/pet/select/gender';
+  static const String petVariety = '/pet/select/variety';
+  static const String petWeight = '/pet/select/weight';
   static const String highlights = '/pet/highlights';
   static const String settings = '/settings';
   static const String userProfile = '/member/profile';
   static const String noticeSettings = '/member/notice-settings';
   static const String aboutUs = '/member/about';
   static const String news = '/member/news';
+  static const String feedback = '/member/feedback';
   static const String shop = '/shop';
   static const String shopGoodsDetail = '/shop/goods-detail';
   static const String shopOrderList = '/shop/orders';
@@ -82,6 +95,55 @@ class AppRouter {
           builder: (_) => const PetDetailPage(),
           settings: settings,
         );
+      case AppRoutes.petAdd:
+        return MaterialPageRoute<bool>(
+          builder: (_) => const PetAddGuidePage(),
+          settings: settings,
+        );
+      case AppRoutes.petEdit:
+        // arguments: PetInfo?（传入 = 编辑，不传 = 新增）
+        return MaterialPageRoute<bool>(
+          builder: (_) => PetEditPage(
+            pet: settings.arguments is PetInfo
+                ? settings.arguments as PetInfo
+                : null,
+          ),
+          settings: settings,
+        );
+      case AppRoutes.petType:
+        return MaterialPageRoute<String>(
+          builder: (_) => const PetTypePage(),
+          settings: settings,
+        );
+      case AppRoutes.petGender:
+        return MaterialPageRoute<Map<String, String>>(
+          builder: (_) => const PetGenderPage(),
+          settings: settings,
+        );
+      case AppRoutes.petVariety:
+        // arguments: {mark: cat|dog, initialVariety?: String}
+        final args = settings.arguments is Map
+            ? settings.arguments as Map
+            : const <String, dynamic>{};
+        return MaterialPageRoute<String>(
+          builder: (_) => PetVarietyPage(
+            mark: args['mark']?.toString() ?? 'cat',
+            initialVariety: args['initialVariety']?.toString(),
+          ),
+          settings: settings,
+        );
+      case AppRoutes.petWeight:
+        // arguments: {petType: cat|dog, initialWeight: double}
+        final args = settings.arguments is Map
+            ? settings.arguments as Map
+            : const <String, dynamic>{};
+        return MaterialPageRoute<String>(
+          builder: (_) => PetWeightPage(
+            petType: args['petType']?.toString() ?? 'cat',
+            initialWeight: (args['initialWeight'] as num?)?.toDouble() ?? 4,
+          ),
+          settings: settings,
+        );
       case AppRoutes.highlights:
         return MaterialPageRoute(
           builder: (_) => const HighlightsPage(),
@@ -110,6 +172,11 @@ class AppRouter {
       case AppRoutes.news:
         return MaterialPageRoute(
           builder: (_) => const NewsPage(),
+          settings: settings,
+        );
+      case AppRoutes.feedback:
+        return MaterialPageRoute<bool>(
+          builder: (_) => const FeedbackPage(),
           settings: settings,
         );
       case AppRoutes.shop:

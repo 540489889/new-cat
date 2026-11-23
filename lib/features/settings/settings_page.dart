@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:tdesign_flutter/tdesign_flutter.dart';
@@ -25,62 +28,262 @@ class SettingsPage extends StatelessWidget {
   static const Color _redBg = Color(0xFFFBE5E5); // 红标签底
   static const Color _redInk = Color(0xFFE05A5A); // 红标签字
 
+  /// 收起后紧凑栏的高度（不含状态栏）
+  static const double _compactBarHeight = 56;
+
   @override
   Widget build(BuildContext context) {
-    final topInset = MediaQuery.of(context).padding.top;
-    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final topInset = MediaQuery.paddingOf(context).top;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
     // extendBody 下 padding.bottom 已含底部胶囊 TabBar 高度，再留少量间距
     final bottomPad = bottomInset + 24.0;
+
+    // 展开态高度 = 状态栏 + 图标行 + 用户信息 + 8 + 横幅 + 12
+    final width = MediaQuery.sizeOf(context).width;
+    final textScaler = MediaQuery.textScalerOf(context);
+    // 行高按 1.4 估算并取 max，宁可高估（多出空白）也不要低估（Column 溢出）
+    final textBlock =
+        textScaler.scale(17) * 1.4 + 4 + textScaler.scale(12) * 1.4;
+    final profileHeight = 20 + math.max(72.0, textBlock);
+    final bannerHeight = width * 222 / 1206; // 已裁掉上下阴影留白的卡片高度
+    final maxExtent = topInset + 31 + profileHeight + 8 + bannerHeight + 12;
+    final minExtent = topInset + _compactBarHeight;
 
     return Scaffold(
       backgroundColor: _bg,
       body: Stack(
         children: [
-          // 顶部右上角浅色同心圆装饰（与宠物页档案卡装饰风格一致）
+          // 顶部右上角浅色同心圆装饰（会透过头部毛玻璃）
           const Positioned(top: -80, right: -60, child: _DecoRings()),
-          SingleChildScrollView(
-            padding: EdgeInsets.only(top: topInset, bottom: bottomPad),
-            child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 顶部右侧：消息铃铛 + 设置入口
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+          CustomScrollView(
+            slivers: [
+              // 折叠式头部：滚动时横幅/用户信息淡出，只剩一条紧凑栏吸顶
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _CollapsingHeaderDelegate(
+                  topInset: topInset,
+                  minExtent: minExtent,
+                  maxExtent: maxExtent,
+                ),
+              ),
+              SliverPadding(
+                padding: EdgeInsets.only(bottom: bottomPad),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate(const [
+                    _ShopCard(),
+                    SizedBox(height: 12),
+                    _DeviceCard(),
+                    SizedBox(height: 12),
+                    _FamilyCard(),
+                    SizedBox(height: 12),
+                    _GeneralList(),
+                  ]),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 折叠式头部 delegate。
+///
+/// - 展开态（maxExtent）：图标行 + 用户信息 + 会员权益横幅 + 12 间距；
+/// - 收起态（minExtent）：一条紧凑栏（小头像 + 昵称 + 图标），吸顶常驻。
+/// 两端之间用透明度交叉过渡，避免高度突变造成的割裂感。
+class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
+  _CollapsingHeaderDelegate({
+    required this.topInset,
+    required this.minExtent,
+    required this.maxExtent,
+  });
+
+  final double topInset;
+
+  @override
+  final double maxExtent;
+
+  @override
+  final double minExtent;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    final range = (maxExtent - minExtent).clamp(1.0, double.infinity);
+    final t = (shrinkOffset / range).clamp(0.0, 1.0);
+
+    return ClipRect(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 毛玻璃底：展开时更透（顶部装饰柔和透出），收起后稍实保证文字可读
+          IgnorePointer(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      SettingsPage._bg.withValues(alpha: 0.80 + 0.12 * t),
+                      SettingsPage._bg.withValues(alpha: 0.72 + 0.16 * t),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // 展开态内容：随折叠淡出（被 ClipRect 从底部裁掉）
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Opacity(
+              opacity: (1 - t * 1.6).clamp(0.0, 1.0),
+              // 直接放 Column：Positioned 只给 top/left/right 时高度不受限，
+              // 内容保持完整高度、随头部收缩被外层 ClipRect 从底部裁掉。
+              child: Column(
                 children: [
-                  GestureDetector(
-                    onTap: () =>
-                        Navigator.of(context).pushNamed(AppRoutes.news),
-                    child: const Icon(Icons.notifications_none_rounded,
-                        size: 23, color: _ink),
+                  SizedBox(height: topInset),
+                  // 顶部右侧：消息铃铛 + 设置入口
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        GestureDetector(
+                          onTap: () =>
+                              Navigator.of(context).pushNamed(AppRoutes.news),
+                          child: const Icon(
+                              Icons.notifications_none_rounded,
+                              size: 23,
+                              color: SettingsPage._ink),
+                        ),
+                        const SizedBox(width: 18),
+                        GestureDetector(
+                          onTap: () => Navigator.of(context)
+                              .pushNamed(AppRoutes.settings),
+                          child: const Icon(Icons.settings_outlined,
+                              size: 22, color: SettingsPage._ink),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(width: 18),
-                  GestureDetector(
-                    onTap: () =>
-                        Navigator.of(context).pushNamed(AppRoutes.settings),
-                    child: const Icon(Icons.settings_outlined,
-                        size: 22, color: _ink),
-                  ),
+                  const _ProfileHeader(),
+                  const SizedBox(height: 8),
+                  const _MemberBanner(),
+                  // 与卡片间距一致的 12
+                  const SizedBox(height: 12),
                 ],
               ),
             ),
-            const _ProfileHeader(),
-            // 会员权益：直接使用设计稿图片（icon/u-member.png，图片自带四周间距，故上下不再额外加间距）
-            Image.asset('assets/images/icon/u-member.png',
-                width: double.infinity, fit: BoxFit.fitWidth),
-            const _ShopCard(),
-            const SizedBox(height: 12),
-            const _DeviceCard(),
-            const SizedBox(height: 12),
-            const _FamilyCard(),
-            const SizedBox(height: 12),
-            const _GeneralList(),
-          ],
-        ),
-        ),
+          ),
+          // 收起态紧凑栏：后半程淡入
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Opacity(
+              opacity: ((t - 0.35) / 0.65).clamp(0.0, 1.0),
+              child: _CompactHeaderBar(
+                topInset: topInset,
+                height: minExtent - topInset,
+              ),
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _CollapsingHeaderDelegate oldDelegate) =>
+      oldDelegate.maxExtent != maxExtent ||
+      oldDelegate.minExtent != minExtent ||
+      oldDelegate.topInset != topInset;
+}
+
+/// 收起后吸顶的紧凑栏：小头像 + 昵称 + 消息/设置入口
+class _CompactHeaderBar extends StatelessWidget {
+  const _CompactHeaderBar({required this.topInset, required this.height});
+
+  final double topInset;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final user = context.watch<UserState>();
+    final avatarUrl = user.avatarUrl;
+    return Column(
+      children: [
+        SizedBox(height: topInset),
+        SizedBox(
+          height: height,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                ClipOval(
+                  child: SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: avatarUrl != null
+                        ? Image.network(
+                            avatarUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => Image.asset(
+                                'assets/images/group-1.png',
+                                fit: BoxFit.cover),
+                          )
+                        : Image.asset('assets/images/group-1.png',
+                            fit: BoxFit.cover),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    user.username,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: SettingsPage._ink,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () =>
+                      Navigator.of(context).pushNamed(AppRoutes.news),
+                  child: const Padding(
+                    padding: EdgeInsets.all(6),
+                    child: Icon(Icons.notifications_none_rounded,
+                        size: 21, color: SettingsPage._ink),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () =>
+                      Navigator.of(context).pushNamed(AppRoutes.settings),
+                  child: const Padding(
+                    padding: EdgeInsets.all(6),
+                    child: Icon(Icons.settings_outlined,
+                        size: 20, color: SettingsPage._ink),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -118,6 +321,56 @@ class _IconBox extends StatelessWidget {
       child: Center(
         child: Image.asset(asset, width: size * 0.6, height: size * 0.6),
       ),
+    );
+  }
+}
+
+/// 会员权益横幅。
+///
+/// `u-member.png` 为 1206×318 的设计稿切图，真正不透明的卡片只占 y=36~257，
+/// 上方 36px、下方 60px 都是渐隐阴影 + 透明留白。直接铺满会让它和上下卡片
+/// 之间的视觉间距比其它卡片间距大很多，所以这里按宽度等比裁到卡片边缘，
+/// 间距统一交给外层 SizedBox 控制。
+class _MemberBanner extends StatelessWidget {
+  const _MemberBanner();
+
+  static const double _srcWidth = 1206;
+  static const double _srcHeight = 318;
+  static const double _srcTrimTop = 36; // 上方阴影/透明留白（源图像素）
+  static const double _srcTrimBottom = 60; // 下方阴影/透明留白（源图像素）
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final imageHeight = width * _srcHeight / _srcWidth;
+        final trimTop = width * _srcTrimTop / _srcWidth;
+        final trimBottom = width * _srcTrimBottom / _srcWidth;
+        return ClipRect(
+          child: SizedBox(
+            height: imageHeight - trimTop - trimBottom,
+            // OverflowBox：让图片按原始比例（imageHeight）布局，
+            // 否则会被 SizedBox 的紧约束压扁（BoxFit.fill 会纵向拉伸变形）
+            child: OverflowBox(
+              alignment: Alignment.topCenter,
+              minWidth: width,
+              maxWidth: width,
+              minHeight: imageHeight,
+              maxHeight: imageHeight,
+              child: Transform.translate(
+                offset: Offset(0, -trimTop),
+                child: Image.asset(
+                  'assets/images/icon/u-member.png',
+                  width: width,
+                  height: imageHeight,
+                  fit: BoxFit.fill,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -559,7 +812,9 @@ class _GeneralList extends StatelessWidget {
         children: [
           row(png('assets/images/icon/m-d1.png'), '客服', onTap: comingSoon),
           Container(height: 1, color: SettingsPage._divider),
-          row(png('assets/images/icon/m-d6.png'), '投诉建议', onTap: comingSoon),
+          row(png('assets/images/icon/m-d6.png'), '投诉建议',
+              onTap: () =>
+                  Navigator.of(context).pushNamed(AppRoutes.feedback)),
           Container(height: 1, color: SettingsPage._divider),
           row(png('assets/images/icon/m-d4.png'), '检查更新',
               note: '最新版本',

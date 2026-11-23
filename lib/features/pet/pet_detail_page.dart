@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/pet/pet_state.dart';
+import '../../core/router/app_router.dart';
 
 /// 宠物详情页：按设计稿还原。
 /// 顶部粉紫渐变标题栏（返回 / 居中标题 / 分享）→ 宠物信息卡（头像+名字+到家日期）
@@ -514,7 +515,17 @@ class _BaseInfoCard extends StatelessWidget {
                       color: PetDetailPage._ink)),
               const Spacer(),
               GestureDetector(
-                onTap: () {}, // TODO: 编辑资料
+                onTap: () async {
+                  final pet = context.read<PetState>().selectedPet;
+                  if (pet == null) return;
+                  final changed = await Navigator.of(context).pushNamed<bool>(
+                    AppRoutes.petEdit,
+                    arguments: pet,
+                  );
+                  if (changed == true) {
+                    await context.read<PetState>().refresh();
+                  }
+                },
                 behavior: HitTestBehavior.opaque,
                 child: Container(
                   padding:

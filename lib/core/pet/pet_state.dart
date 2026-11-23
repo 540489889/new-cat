@@ -73,6 +73,12 @@ class PetState extends ChangeNotifier {
     _setDefaultPet(_pets[index].id);
   }
 
+  /// 添加/编辑宠物后强制重新拉取列表（loadPets 在加载中时会跳过）。
+  Future<void> refresh() async {
+    _loaded = false;
+    await loadPets();
+  }
+
   Future<void> loadPets() async {
     debugPrint('[PetState] loadPets called');
     if (_loading) return;
