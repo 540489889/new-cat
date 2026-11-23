@@ -115,60 +115,39 @@ class _TitleRow extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
         child: Row(
         children: [
+          // 标题压在深紫棕背景图上，用白字保证对比度
           const Text(
             '宠物',
             style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w700,
-              color: PetPage._ink,
+              color: Colors.white,
             ),
           ),
           const SizedBox(width: 4),
           Text(
             '$count',
-            style: const TextStyle(fontSize: 12, color: Color(0xFFB9AEB2)),
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.white.withValues(alpha: 0.7),
+            ),
           ),
           const Spacer(),
-          // 添加宠物：白色胶囊按钮（浅色圆 + 号 + 文字）
+          // 添加宠物：直接用设计稿切图（紫色胶囊 + 号 + 文案），
+          // 高度 30、宽度按图片比例自适应；点开引导页，返回 true 说明新增成功
           GestureDetector(
-            onTap: () {}, // TODO: 添加宠物
-            child: Container(
-              height: 36,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // 浅色小圆 + 深色加号
-                  SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Color(0xFFF1EBEE),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.add,
-                        size: 13,
-                        color: Color(0xFF5C4A50),
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 6),
-                  Text(
-                    '添加宠物',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: PetPage._ink,
-                    ),
-                  ),
-                ],
-              ),
+            behavior: HitTestBehavior.opaque,
+            onTap: () async {
+              final changed =
+                  await Navigator.of(context).pushNamed<bool>(AppRoutes.petAdd);
+              if (changed == true && context.mounted) {
+                await context.read<PetState>().refresh();
+              }
+            },
+            child: Image.asset(
+              'assets/images/icon/btn1.png',
+              height: 30,
+              fit: BoxFit.contain,
             ),
           ),
         ],
@@ -248,14 +227,19 @@ class _PetHeaderDelegate extends SliverPersistentHeaderDelegate {
               ],
             ),
           ),
-          // 收起态：迷你栏吸顶，占据原来标题行的位置
+          // 收起态：迷你栏吸顶，占据原来标题行的位置。
+          // 必须按 miniFade 关闭命中测试——Opacity 只影响绘制，
+          // 展开态下这层不可见但仍会吃掉标题行（含「添加宠物」按钮）的点击
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            child: Opacity(
-              opacity: miniFade,
-              child: _PetMiniBar(topInset: topInset, height: miniBarHeight),
+            child: IgnorePointer(
+              ignoring: miniFade < 0.05,
+              child: Opacity(
+                opacity: miniFade,
+                child: _PetMiniBar(topInset: topInset, height: miniBarHeight),
+              ),
             ),
           ),
         ],
@@ -642,11 +626,14 @@ class _PetProfileCardState extends State<_PetProfileCard> {
             ),
           ),
           // 收起态：白色胶囊里的横向迷你档案栏（小头像 + 名字 + 陪伴天数 + 箭头）。
-          // 白底上统一用深色文字，与展开态同一套配色，不出现「白字→黑字」突变
+          // 白底上统一用深色文字，与展开态同一套配色，不出现「白字→黑字」突变。
+          // 同样按 miniFade 关闭命中测试，避免透明层吃掉卡片内的点击
           Positioned.fill(
-            child: Opacity(
-              opacity: miniFade,
-              child: GestureDetector(
+            child: IgnorePointer(
+              ignoring: miniFade < 0.05,
+              child: Opacity(
+                opacity: miniFade,
+                child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => Navigator.of(context).pushNamed('/pet/detail'),
                 child: Padding(
@@ -686,6 +673,7 @@ class _PetProfileCardState extends State<_PetProfileCard> {
               ),
             ),
           ),
+        ),
         ],
       ),
     );
