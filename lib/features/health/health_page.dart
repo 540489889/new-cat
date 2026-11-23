@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -24,14 +25,45 @@ class HealthPage extends StatefulWidget {
 
   /// 标题栏高度（不含状态栏）：内容滚动盒子的上边界，
   /// 也是「状态栏 + 标题」占用的高度
-  static const double _titleBarHeight = 58;
+  static const double _titleBarHeight = 50;
+
+  /// 头像区展开高度（设计稿里头像直径约 56，不需要更高）
+  static const double _avatarAreaHeight = 88;
+
+  /// 顶部背景图（top_bg2.png）覆盖的高度（不含状态栏）
+  static const double _topBgHeight = _titleBarHeight + _avatarAreaHeight;
 
   @override
   State<HealthPage> createState() => _HealthPageState();
 }
 
-/// 页面状态：整页一个 CustomScrollView，标题栏 + 头像轮播在同一个折叠头里。
+/// 页面状态：滚动盒子用 CustomScrollView，顶部头像板块为折叠头。
 class _HealthPageState extends State<HealthPage> {
+  final ScrollController _scrollController = ScrollController();
+
+  /// 头像折叠进度 0（展开大轮播）→ 1（完全收起）。
+  /// 标题栏右侧头像据此淡入，与折叠头联动。
+  final ValueNotifier<double> _fold = ValueNotifier<double>(0);
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(() {
+      final t = (_scrollController.offset /
+              (_AvatarFoldDelegate.expandedExtent -
+                  _AvatarFoldDelegate.collapsedExtent))
+          .clamp(0.0, 1.0);
+      if ((_fold.value - t).abs() > 0.01) _fold.value = t;
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _fold.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).padding.top;
@@ -42,18 +74,33 @@ class _HealthPageState extends State<HealthPage> {
     return Scaffold(
       backgroundColor: HealthPage._bg,
       body: Stack(
-        children: [
-          CustomScrollView(
+      children: [
+        // 标题栏（状态栏 + 标题）固定在顶部，不随滚动
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: _TitleBar(topInset: topInset, fold: _fold),
+        ),
+        // 滚动内容盒子：从标题栏下方开始。
+        // 头像板块作为折叠头 pinned 在此盒子顶部：上滑收起为迷你栏，
+        // 下滑展开为大头像轮播，始终保留宠物切换入口。
+        Positioned(
+          top: topInset + HealthPage._titleBarHeight,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: CustomScrollView(
+            controller: _scrollController,
             slivers: [
-              // 标题栏 + 头像轮播属于同一个折叠头：
-              // 静止时都在内容层（随滚动上移），完全收起后只剩一条迷你栏吸顶。
-              // 渐变只画在折叠头内部、底边渐隐到米白，滚动区保持干净米白底。
               SliverPersistentHeader(
                 pinned: true,
-                delegate: _HealthHeaderDelegate(topInset: topInset),
+                delegate: const _AvatarFoldDelegate(),
               ),
               SliverPadding(
-                padding: EdgeInsets.only(bottom: bottomPad),
+                // 顶部留 12：背景图底部的白色弧线与第一张白卡之间留出缝，
+                // 否则两张白色直接相接，会显得卡片压在背景图上
+                padding: EdgeInsets.only(top: 12, bottom: bottomPad),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     // 注意：这里刻意不用 const —— const 无参实例在热重载时会被
@@ -68,6 +115,7 @@ class _HealthPageState extends State<HealthPage> {
               ),
             ],
           ),
+        ),
           // 底部 AI 问答浮条：紧贴胶囊 TabBar 上方。
           // 注意 padding.bottom 已含 TabBar 高度（extendBody 注入），
           // 勿再加大偏移，否则浮条会悬到卡片中间形成阴影块
@@ -83,245 +131,193 @@ class _HealthPageState extends State<HealthPage> {
   }
 }
 
-/// 标题行（健康 + 日期）：只负责内容，渐变背景由 [_HealthHeaderDelegate] 统一绘制。
-class _HealthTitleRow extends StatelessWidget {
-  const _HealthTitleRow();
+/// 固定标题栏：状态栏 +「健康 / 日期」+ 收起时淡入的当前宠物头像。
+/// 头像融入到标题栏右侧，替代原来单独占一行的迷你栏，零额外高度。
+class _TitleBar extends StatelessWidget {
+  const _TitleBar({required this.topInset, required this.fold});
+
+  final double topInset;
+
+  /// 头像折叠进度 0→1，控制右侧头像淡入
+  final ValueListenable<double> fold;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: HealthPage._titleBarHeight,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        child: Align(
-          alignment: Alignment.bottomLeft,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const Text('健康',
-                  style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white)),
-              const SizedBox(width: 8),
-              Padding(
-                padding: const EdgeInsets.only(top: 3),
-                child: Text('9月28日',
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withValues(alpha: 0.85))),
+    return ClipRect(
+      child: SizedBox(
+        height: topInset + HealthPage._titleBarHeight,
+        child: Stack(
+          children: [
+            // 背景图顶部切片：与滚动区折叠头那张同源同位置。
+            // 用 fill 完整铺出整张图（含底部白色弧线）
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: topInset + HealthPage._topBgHeight,
+              child: Image.asset(
+                'assets/images/icon/top_bg2.png',
+                fit: BoxFit.fill,
               ),
-            ],
+            ),
+            // 标题下沉贴底：缩短「健康」到头像区的视觉空隙。
+            // 不用 Container.alignment：那会让子级按固有宽度布局，
+            // Row 里的 Expanded 拿不到空间，右侧头像会被挤出屏幕，
+            // 所以用 Column 贴底 + stretch 撑满整行宽度
+            Padding(
+              padding: EdgeInsets.fromLTRB(0, topInset, 0, 8),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Text('健康',
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white)),
+                // 收起时右侧淡入当前宠物头像（可点击切换），不额外占一行
+                ValueListenableBuilder<double>(
+                  valueListenable: fold,
+                  builder: (context, t, _) {
+                    final petState = context.watch<PetState>();
+                    final selected = petState.selectedPet;
+                    return Expanded(
+                      child: Opacity(
+                        opacity: t,
+                        child: IgnorePointer(
+                          ignoring: t < 0.4,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              final pets = petState.pets;
+                              if (pets.isEmpty) return;
+                              petState.selectPet(
+                                  (petState.selectedIndex + 1) % pets.length);
+                            },
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                _PetAvatar(
+                                    head: selected?.headimg ?? '',
+                                    ringed: true,
+                                    size: 28),
+                                const SizedBox(width: 6),
+                                ConstrainedBox(
+                                  constraints:
+                                      const BoxConstraints(maxWidth: 80),
+                                  child: Text(
+                                    selected?.nickname ?? '我的宠物',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white),
+                                  ),
+                                ),
+                                const Icon(Icons.chevron_right,
+                                    size: 16, color: Colors.white),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-/// 整头部折叠 delegate：标题栏(58) + 头像轮播(110) 一起随滚动收起。
-///
-/// 收起后只剩一条 56 高的迷你栏（小头像 + 名字，可点击切换宠物）。
-/// 背景是两段固定绝对位置的渐变，随头部裁剪，保证收缩过程中颜色连续。
-class _HealthHeaderDelegate extends SliverPersistentHeaderDelegate {
-  _HealthHeaderDelegate({required this.topInset});
+/// 头像板块折叠头 delegate：上滑从大头像轮播平滑收起为迷你栏（头像 + 名字）。
+/// 对齐宠物页 _ProfileCardDelegate 的做法，min/max 不等 + shrinkOffset 插值。
+class _AvatarFoldDelegate extends SliverPersistentHeaderDelegate {
+  const _AvatarFoldDelegate();
 
-  final double topInset;
+  static const double expandedExtent = HealthPage._avatarAreaHeight;
 
-  static const double avatarExpandedExtent = 110;
-  static const double miniBarHeight = 56;
+  /// 完全收起为 0 高度：头像移到标题栏右侧，不再单独占一行
+  static const double collapsedExtent = 0;
 
   @override
-  double get maxExtent =>
-      topInset + HealthPage._titleBarHeight + avatarExpandedExtent;
+  double get maxExtent => expandedExtent;
 
   @override
-  double get minExtent => topInset + miniBarHeight;
+  double get minExtent => collapsedExtent;
 
   @override
   Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    final range = (maxExtent - minExtent).clamp(1.0, double.infinity);
-    final t = (shrinkOffset / range).clamp(0.0, 1.0);
-    // 展开内容整体淡出（与宠物页、「我的」页同一节奏）：
-    // 标题与头像保持原始尺寸，不做缩放/位移等内部形变，只被头部边界裁切
-    final expandedFade = (1 - t * 1.5).clamp(0.0, 1.0);
-    // 迷你栏靠后淡入：此时展开内容已淡出，背景是渐变的顶部深色段，
-    // 迷你栏内容用白字压在上面（见 _HealthMiniBar）
-    final miniOpacity = ((t - 0.5) / 0.5).clamp(0.0, 1.0);
-
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    final t = (shrinkOffset / (expandedExtent - collapsedExtent))
+        .clamp(0.0, 1.0);
+    // 折叠头坐标原点在「状态栏 + 标题栏」下沿，而背景图是从屏幕顶部铺的，
+    // 这里补回偏移让它与顶层那张严格重合。
+    // 直接读 MediaQuery，不经 delegate 字段——避免热重载时旧实例字段为 null
+    final topInset = MediaQuery.of(context).padding.top;
+    // 刻意不用 const 缓存实例：收缩比例每帧变化，需要实时重建
     return ClipRect(
       child: Stack(
         children: [
-          // 头部背景：与底层整页渐变同参数、同位置的两段渐变，不随折叠淡出。
-          // 展开与收起时头部显示的始终是同一段渐变（只是可视高度被裁短），
-          // 因此收起后不会出现「头部渐变 vs 内容米白」的横向断层。
-          Positioned.fill(
-            child: ColoredBox(
-              color: HealthPage._bg,
-              child: Stack(
-                children: [
-                  // 第一段：标题区深紫棕 → 中粉紫
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: topInset + HealthPage._titleBarHeight,
-                    child: const DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Color(0xFF8E6B84), Color(0xFFB48CA3)],
-                        ),
-                      ),
-                    ),
-                  ),
-                  // 第二段：头像区中粉紫 → 页面暖米底
-                  Positioned(
-                    top: topInset + HealthPage._titleBarHeight,
-                    left: 0,
-                    right: 0,
-                    height: avatarExpandedExtent,
-                    child: const DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Color(0xFFB48CA3), HealthPage._bg],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // 展开态：标题 + 头像轮播作为一个整体，保持原始尺寸淡出，
-          // 由外层 ClipRect 按折叠后的头部高度裁切（无内部缩放）
+          // 背景切片：与顶层 top_bg2.png 同位置、同裁切方式。
+          // 折叠时随头部一起被裁掉，收起后内容区不会留下紫棕色带
           Positioned(
-            top: 0,
+            top: -(topInset + HealthPage._titleBarHeight),
             left: 0,
             right: 0,
-            child: Opacity(
-              opacity: expandedFade,
-              child: Column(
-                children: [
-                  SizedBox(height: topInset),
-                  const SizedBox(
-                    height: HealthPage._titleBarHeight,
-                    child: _HealthTitleRow(),
-                  ),
-                  const SizedBox(
-                    height: avatarExpandedExtent,
-                    child: _AvatarFoldCard(),
-                  ),
-                ],
-              ),
+            height: topInset + HealthPage._topBgHeight,
+            child: Image.asset(
+              'assets/images/icon/top_bg2.png',
+              fit: BoxFit.fill,
             ),
           ),
-          // 收起态迷你栏：后半程淡入，取代标题栏成为常驻内容
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: Opacity(
-              opacity: miniOpacity,
-              child: _HealthMiniBar(
-                topInset: topInset,
-                height: miniBarHeight,
-              ),
-            ),
-          ),
+          Positioned.fill(child: _AvatarFoldCard(collapsed: t)),
         ],
       ),
     );
   }
 
   @override
-  bool shouldRebuild(covariant _HealthHeaderDelegate oldDelegate) =>
-      oldDelegate.topInset != topInset;
+  bool shouldRebuild(covariant SliverPersistentHeaderDelegate oldDelegate) =>
+      false;
 }
 
-/// 收起后吸顶的迷你栏：小头像 + 宠物名 + 切换箭头
-class _HealthMiniBar extends StatelessWidget {
-  const _HealthMiniBar({required this.topInset, required this.height});
+/// 头像折叠卡：只承载展开态大头像轮播，随折叠淡出并收缩到 0 高度。
+/// 收起态头像移到固定标题栏右侧显示，因此这里不再有迷你栏内容。
+class _AvatarFoldCard extends StatelessWidget {
+  const _AvatarFoldCard({required this.collapsed});
 
-  final double topInset;
-  final double height;
+  final double collapsed;
 
   @override
   Widget build(BuildContext context) {
-    final petState = context.watch<PetState>();
-    final selected = petState.selectedPet;
-    return Column(
-      children: [
-        SizedBox(height: topInset),
-        SizedBox(
-          height: height,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                final pets = petState.pets;
-                if (pets.isEmpty) return;
-                petState.selectPet(
-                    (petState.selectedIndex + 1) % pets.length);
-              },
-              child: Row(
-                children: [
-                  _PetAvatar(
-                    head: selected?.headimg ?? '',
-                    ringed: true,
-                    size: 30,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      selected?.nickname ?? '我的宠物',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right,
-                      size: 18, color: Colors.white),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
+    final t = collapsed.clamp(0.0, 1.0);
+    // 背景由 delegate 绘制（top_bg2.png 切片），这里只负责头像轮播淡出。
+    // 收起过程中始终可点，完全收起后无高度不再可见
+    return Opacity(
+      opacity: 1 - t,
+      child: IgnorePointer(
+        ignoring: t > 0.9,
+        child: const Center(child: _PetAvatarCarousel()),
+      ),
     );
   }
 }
 
-/// 头像折叠卡：只承载展开态大头像轮播。
-/// 折叠动画由 [_HealthHeaderDelegate] 统一处理（整体淡出 + 边界裁切），
-/// 这里不做任何缩放/位移的内部形变，与宠物页保持一致。
-/// 背景渐变同样由 delegate 绘制，避免折叠时出现第二层色带。
-class _AvatarFoldCard extends StatelessWidget {
-  const _AvatarFoldCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(child: _PetAvatarCarousel());
-  }
-}
-
-/// 头像描边色（与宠物页一致）
-const Color _ring = Color(0xFFC48FA5);
-
-/// 圆形头像（白色描边，可选粉色描边）；headimg 为空时回退本地图。
+/// 圆形头像（白色圆底 + 内间距形成白边）；headimg 为空时回退本地图。
 class _PetAvatar extends StatelessWidget {
   final String head;
   final bool ringed;
@@ -337,13 +333,13 @@ class _PetAvatar extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      padding: EdgeInsets.all(ringed ? 5 : 2),
-      decoration: ringed
-          ? BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: _ring, width: 2),
-            )
-          : const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+      // 白色圆底 + 少量内间距：靠留白形成一圈细腻的白边，
+      // 不再用粉色描边（当前头像留 4，两侧探出的头像留 2）
+      padding: EdgeInsets.all(ringed ? 4 : 2),
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white,
+      ),
       child: Container(
         decoration: const BoxDecoration(shape: BoxShape.circle),
         clipBehavior: Clip.antiAlias,
@@ -386,7 +382,7 @@ class _PetAvatarCarouselState extends State<_PetAvatarCarousel> {
       _petCount = pets.length;
       _pageCtrl?.dispose();
       _pageCtrl = PageController(
-        viewportFraction: 0.34,
+        viewportFraction: 0.28,
         initialPage: pets.isEmpty
             ? 0
             : pet.selectedIndex.clamp(0, pets.length - 1),
@@ -436,18 +432,18 @@ class _PetAvatarCarouselState extends State<_PetAvatarCarousel> {
     final pet = context.watch<PetState>();
     final pets = pet.pets;
     if (pets.isEmpty) {
-      // 无数据：退化为静态大头像（同样占 92 高度，保证与轮播一致的下间距）
+      // 无数据：退化为静态头像（同样占 80 高度，保证与轮播一致的下间距）
       return SizedBox(
-        height: 92,
+        height: 80,
         child: Center(
-          child: const _PetAvatar(head: '', ringed: true, size: 80),
+          child: const _PetAvatar(head: '', ringed: true, size: 56),
         ),
       );
     }
     return GestureDetector(
       onTap: _tapNext,
       child: SizedBox(
-        height: 92,
+        height: 80,
         child: PageView.builder(
           controller: _pageCtrl,
           itemCount: pets.length,
@@ -471,7 +467,7 @@ class _PetAvatarCarouselState extends State<_PetAvatarCarousel> {
                   child: Transform.scale(
                     scale: scale,
                     child: Center(
-                      child: _PetAvatar(head: head, ringed: ringed, size: 80),
+                      child: _PetAvatar(head: head, ringed: ringed, size: 56),
                     ),
                   ),
                 );

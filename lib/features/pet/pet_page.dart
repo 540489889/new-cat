@@ -18,48 +18,10 @@ class PetPage extends StatefulWidget {
   static const Color _pinkText = Color(0xFFB08CA0); // 链接/标签粉
   static const Color _tagBg = Color(0xFFF6ECEF); // 标签底
   static const Color _brand = Color(0xFF7F6370); // 品牌紫（AI 浮条）
-  // 顶部渐变（与健康页同款）：深紫棕→粉紫→浅粉，底部透明融入页面暖米底
-  static const LinearGradient _topGradient = LinearGradient(
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-    colors: [
-      Color(0xFF8E6B84), // 顶部深紫棕
-      Color(0xFFB48CA3), // 中部粉紫
-      Color(0xFFE5D2DC), // 浅粉紫
-      Color(0x00E5D2DC), // 渐变底部透明，卡片可透过显示
-    ],
-    stops: [0.0, 0.42, 0.72, 0.89],
-  );
-
-  /// 顶部渐变背景层的总高度额外量（实际高度 = topInset + 该值）。
-  /// 标题栏渐变按同一总高度映射，保证两段渐变无缝融为一体。
-  static const double _gradientHeightExtra = 300.0;
 
   /// 标题栏高度（不含状态栏）：内容滚动盒子的上边界，
   /// 也是「状态栏 + 标题」占用的高度（与健康页一致）
   static const double _titleBarHeight = 58;
-
-  /// 取顶部渐变在纵向 [y]（相对渐变层顶部）处的颜色（分段线性插值）。
-  /// 用于档案卡收起态背景，使其与背后渐变完全衔接、融为一体。
-  ///
-  /// 注意：渐变尾部带透明度（0x00E5D2DC），若直接用作卡片背景会让卡片半透明、
-  /// 透出下方白色内容形成「白蒙层」。这里把取到的颜色按 alpha 合成到页面底色
-  /// [_bg] 上，返回不透明色——既与背后实际观感一致，又保证卡片始终不透光。
-  static Color gradientColorAt(double y, double bgH) {
-    final p = (y / bgH).clamp(0.0, 1.0);
-    final stops = _topGradient.stops!;
-    final colors = _topGradient.colors;
-    Color sampled = colors.last;
-    for (int i = 0; i < stops.length - 1; i++) {
-      if (p <= stops[i + 1]) {
-        final f = ((p - stops[i]) / (stops[i + 1] - stops[i])).clamp(0.0, 1.0);
-        sampled = Color.lerp(colors[i], colors[i + 1], f)!;
-        break;
-      }
-    }
-    // 按 alpha 合成到页面底色，得到不透明的最终色
-    return Color.lerp(_bg, sampled.withValues(alpha: 1), sampled.a)!;
-  }
 
   @override
   State<PetPage> createState() => _PetPageState();
@@ -85,31 +47,44 @@ class _PetPageState extends State<PetPage> {
       backgroundColor: PetPage._bg,
       body: Stack(
         children: [
-          CustomScrollView(
-            controller: _scrollController,
-            slivers: [
-              // 整头部折叠：标题栏 + 档案卡一起随滚动收起，
-              // 最终只剩「小头像 + 名字 + 陪伴天数」迷你栏吸顶。
-              // 渐变只画在折叠头内部、底边渐隐到米白，滚动区保持干净米白底，
-              // 这样渐变不会被内容带出头部范围，也不会与内容形成色带。
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: _PetHeaderDelegate(topInset: topInset),
-              ),
-              SliverPadding(
-                padding: EdgeInsets.only(bottom: bottomPad),
-                sliver: SliverToBoxAdapter(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _FeatureGrid(),
-                      _AdventureDiaryCard(),
-                      _HighlightsCard(),
-                    ],
+          // 顶部背景图（置于内容之后）：深紫棕底 + 底部白色波浪，
+          // 按屏幕宽度等比铺满；白色波浪与页面底色自然衔接，
+          // 滚动时白色卡片盖住背景图，只在卡片四周 / 间隙透出
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Image.asset(
+              'assets/images/icon/top_bg.png',
+              fit: BoxFit.fitWidth,
+            ),
+          ),
+          // 滚动区铺满整屏：标题栏与档案卡都在同一个折叠头里，
+          // 上滑时标题一起淡出、迷你栏吸顶，收起后就是「标题栏本身变成了迷你栏」，
+          // 而不是标题栏下方再挂一条悬浮卡
+          Positioned.fill(
+            child: CustomScrollView(
+              controller: _scrollController,
+              slivers: [
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _PetHeaderDelegate(topInset: topInset),
+                ),
+                SliverPadding(
+                  padding: EdgeInsets.only(bottom: bottomPad),
+                  sliver: SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _FeatureGrid(),
+                        _AdventureDiaryCard(),
+                        _HighlightsCard(),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           // 底部 AI 问答浮条：与健康页一致，紧贴胶囊 TabBar 上方
           Positioned(
@@ -124,18 +99,21 @@ class _PetPageState extends State<PetPage> {
   }
 }
 
-/// 标题行（宠物 + 数量 + 添加宠物按钮）。
-/// 只负责内容，渐变背景由 [_PetHeaderDelegate] 统一绘制。
+/// 顶部渐变标题栏：仅放标题（宠物 + 数量 + 添加按钮），渐变与健康页同款；
+/// 固定不滚，滚动内容被限制在其下沿以下（由滚动盒子的上边界裁剪）。
 class _TitleRow extends StatelessWidget {
   const _TitleRow();
 
   @override
   Widget build(BuildContext context) {
     final count = context.watch<PetState>().pets.length;
-    return Container(
+    // 高度固定 58：折叠头按「状态栏 + 标题行 + 卡片」叠成一条，
+    // 上滑时整体淡出并被头部边界裁切，收起后由迷你栏接管这一行
+    return SizedBox(
       height: PetPage._titleBarHeight,
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-      child: Row(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+        child: Row(
         children: [
           const Text(
             '宠物',
@@ -153,13 +131,7 @@ class _TitleRow extends StatelessWidget {
           const Spacer(),
           // 添加宠物：白色胶囊按钮（浅色圆 + 号 + 文字）
           GestureDetector(
-            onTap: () async {
-              final changed =
-                  await Navigator.of(context).pushNamed<bool>(AppRoutes.petAdd);
-              if (changed == true) {
-                await context.read<PetState>().refresh();
-              }
-            },
+            onTap: () {}, // TODO: 添加宠物
             child: Container(
               height: 36,
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -200,35 +172,31 @@ class _TitleRow extends StatelessWidget {
             ),
           ),
         ],
+        ),
       ),
     );
   }
 }
 
-/// 整头部折叠 delegate：标题栏 + 档案卡作为一个父盒子随滚动收起。
-///
-/// 动画逻辑对齐「我的」页：
-/// - 展开内容（标题 + 整张档案卡）尺寸不变，整体淡出并被头部边界裁掉，
-///   档案卡内部不做任何缩放/融色/圆角形变；
-/// - 收起后由 [_PetMiniBar] 淡入接管；
-/// - 展开态 = 298，收起态 = 64。
+/// 折叠头 delegate：标题行 + 档案卡作为一个整体随滚动收起，
+/// 收起后迷你栏吸顶——视觉上就是「标题栏本身变成了迷你栏」，
+/// 而不是标题栏下方再挂一条悬浮卡。
 class _PetHeaderDelegate extends SliverPersistentHeaderDelegate {
   _PetHeaderDelegate({required this.topInset});
 
   final double topInset;
 
-  /// 档案卡展开高度（含卡片底部 12 间距）
-  static const double cardExpandedExtent = 240;
+  /// 档案卡展开高度（含卡片上下 margin）
+  static const double cardExtent = 240;
 
-  /// 收起态迷你栏高度（含底部 12 间距）
-  static const double miniBarExtent = 64;
-
-  @override
-  double get maxExtent =>
-      topInset + PetPage._titleBarHeight + cardExpandedExtent;
+  /// 收起态高度（不含状态栏）：迷你栏一行
+  static const double miniBarHeight = 56;
 
   @override
-  double get minExtent => topInset + miniBarExtent;
+  double get maxExtent => topInset + PetPage._titleBarHeight + cardExtent;
+
+  @override
+  double get minExtent => topInset + miniBarHeight;
 
   @override
   Widget build(
@@ -238,75 +206,56 @@ class _PetHeaderDelegate extends SliverPersistentHeaderDelegate {
   ) {
     final range = (maxExtent - minExtent).clamp(1.0, double.infinity);
     final t = (shrinkOffset / range).clamp(0.0, 1.0);
-    // 展开内容整体淡出（与「我的」页同一节奏）
-    final expandedFade = (1 - t * 1.5).clamp(0.0, 1.0);
-    // 迷你栏靠后淡入：此时展开内容已淡出，背景是渐变的顶部深色段，
-    // 迷你栏内容用白字压在上面（见 _PetMiniBar）
-    final miniFade = ((t - 0.55) / 0.45).clamp(0.0, 1.0);
+    // 展开内容整体淡出：标题行比卡片消失得早一些，避免露出被裁一半的文字
+    final titleFade = (1 - t * 2.2).clamp(0.0, 1.0);
+    final cardFade = (1 - t * 1.6).clamp(0.0, 1.0);
+    // 迷你栏在展开内容基本让位后淡入
+    final miniFade = ((t - 0.45) / 0.55).clamp(0.0, 1.0);
 
-    // 父盒子：渐变背景 + 标题栏 + 档案卡，三者是同一个整体
     return ClipRect(
       child: Stack(
         children: [
-          // 头部背景：与底层整页渐变同参数、同位置的一层，不随折叠淡出。
-          // 展开与收起时头部显示的始终是同一段渐变（只是可视高度被裁短），
-          // 因此收起后不会出现「头部渐变 vs 内容米白」的横向断层。
-          Positioned.fill(
-            child: ColoredBox(
-              color: PetPage._bg,
-              child: Stack(
-                children: [
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: topInset + PetPage._gradientHeightExtra,
-                    child: const DecoratedBox(
-                      decoration:
-                          BoxDecoration(gradient: PetPage._topGradient),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // 展开态：标题 + 完整档案卡，保持原始尺寸，靠头部边界裁切 + 淡出
+          // 折叠头背景：与页面顶层完全一致（米白底 + 同一张 top_bg.png），
+          // 既保证收起后这块区域不透明、能挡住下方滚上来的内容，
+          // 又不会在顶部留下任何额外色块
+          const Positioned.fill(child: ColoredBox(color: PetPage._bg)),
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            child: Opacity(
-              opacity: expandedFade,
-              child: Column(
-                children: [
-                  SizedBox(height: topInset),
-                  const SizedBox(
-                    height: PetPage._titleBarHeight,
-                    child: _TitleRow(),
-                  ),
-                  SizedBox(
-                    height: cardExpandedExtent,
-                    // collapsed: 0 → 卡片始终按展开态绘制，不做内部形变
-                    child: _PetProfileCard(
-                      collapsed: 0,
-                      topY: topInset + PetPage._titleBarHeight,
-                    ),
-                  ),
-                ],
-              ),
+            child: Image.asset(
+              'assets/images/icon/top_bg.png',
+              fit: BoxFit.fitWidth,
             ),
           ),
-          // 收起态：迷你档案栏淡入接管
+          // 展开态：状态栏留白 + 标题行 + 完整档案卡，保持原始尺寸整体淡出，
+          // 超出折叠头高度的部分由外层 ClipRect 从上沿裁掉（内容不做形变）
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Column(
+              children: [
+                SizedBox(height: topInset),
+                Opacity(opacity: titleFade, child: const _TitleRow()),
+                SizedBox(
+                  height: cardExtent,
+                  child: Opacity(
+                    opacity: cardFade,
+                    child: const _PetProfileCard(collapsed: 0),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // 收起态：迷你栏吸顶，占据原来标题行的位置
           Positioned(
             top: 0,
             left: 0,
             right: 0,
             child: Opacity(
               opacity: miniFade,
-              child: _PetMiniBar(
-                topInset: topInset,
-                height: minExtent - topInset,
-              ),
+              child: _PetMiniBar(topInset: topInset, height: miniBarHeight),
             ),
           ),
         ],
@@ -319,7 +268,8 @@ class _PetHeaderDelegate extends SliverPersistentHeaderDelegate {
       oldDelegate.topInset != topInset;
 }
 
-/// 收起后吸顶的迷你档案栏：小头像 + 名字 + 陪伴天数 + 箭头
+/// 收起后吸顶的迷你栏：小头像 + 名字 + 陪伴天数 + 箭头。
+/// 直接压在背景图上（和展开态标题行同一位置），所以文字用白色
 class _PetMiniBar extends StatelessWidget {
   const _PetMiniBar({required this.topInset, required this.height});
 
@@ -341,8 +291,7 @@ class _PetMiniBar extends StatelessWidget {
             behavior: HitTestBehavior.opaque,
             onTap: () => Navigator.of(context).pushNamed('/pet/detail'),
             child: Padding(
-              // 底部留出与内容区一致的 12
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
                   CircleAvatar(
@@ -357,23 +306,23 @@ class _PetMiniBar extends StatelessWidget {
                       name,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 14,
+                        fontSize: 15,
                         fontWeight: FontWeight.w700,
                         color: Colors.white,
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(
+                  const Text(
                     '陪伴的第108天',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.white.withValues(alpha: 0.78),
-                    ),
+                    style: TextStyle(fontSize: 11, color: Colors.white70),
                   ),
                   const SizedBox(width: 4),
-                  const Icon(Icons.chevron_right,
-                      size: 18, color: Colors.white),
+                  const Icon(
+                    Icons.chevron_right,
+                    size: 18,
+                    color: Colors.white,
+                  ),
                 ],
               ),
             ),
@@ -387,12 +336,10 @@ class _PetMiniBar extends StatelessWidget {
 /// 宠物档案卡：头像轮播（可滑动/点击切换宠物）+ 名字（可点选择）+ 陪伴天数 + 属性行，
 /// 卡片左上/右下带浅色同心圆装饰。
 /// [collapsed] 0=完整展开，1=收起为「小头像+名字」紧凑条，中间连续插值。
-/// [topY] 卡片顶部的绝对 y（含状态栏），用于收起态取背后渐变同色。
 class _PetProfileCard extends StatefulWidget {
-  const _PetProfileCard({required this.collapsed, required this.topY});
+  const _PetProfileCard({required this.collapsed});
 
   final double collapsed;
-  final double topY;
 
   @override
   State<_PetProfileCard> createState() => _PetProfileCardState();
@@ -474,32 +421,26 @@ class _PetProfileCardState extends State<_PetProfileCard> {
       (Icons.monitor_weight, '3kg'),
     ];
 
-    // 收缩插值：t=0 完整展开，t=1 收起为横向迷你档案栏
+    // ===== 收起动画 =====
+    // 关键：收起过程中展开内容的「布局完全不变」（头像高度、行距、内边距都是常量）。
+    // 卡片变矮只靠外层 ClipRect 从上沿裁切，内容本身不位移、不重排，
+    // 因此不会出现"内容被挤到上面去"的挤压感。
+    // 内容在收起阶段极早处（t<0.35）就整体淡出，裁切过程肉眼几乎看不到。
     final t = widget.collapsed.clamp(0.0, 1.0);
-    // 几何量统一走缓出曲线：收尾更柔和，避免线性收缩的机械感
+    // 几何量统一走缓出曲线（只用于卡片的圆角 / 边距收拢）
     final et = Curves.easeOutCubic.transform(t);
-    final vPad = lerpDouble(20, 6, et)!;
-    // 纵向轮播随收起淡出（高度收为 0），由横向迷你栏接管
-    final avatarH = lerpDouble(96, 0, et)!;
-    final avatarSize = lerpDouble(80, 36, et)!;
-    // 大头像先干净地淡出（不做硬裁切），迷你栏稍后才淡入，两者不重叠
-    final avatarFade = (1 - t * 2.2).clamp(0.0, 1.0);
-    // 错峰淡出：属性行最先消失、天数其次、名字最后（配 easeIn 让消失更"轻盈"）
-    final nameFade = Curves.easeIn.transform((1 - t * 1.6).clamp(0.0, 1.0));
-    final daysFade = Curves.easeIn.transform((1 - t * 2.6).clamp(0.0, 1.0));
-    final statsFade = Curves.easeIn.transform((1 - t * 4.0).clamp(0.0, 1.0));
-    // 收起时卡片融入头部渐变：白底渐变为「与背后渐变衔接的颜色」、
-    // 深色文字渐变为白色。收起条背景对齐背后渐变的对应区段。
-    final bgH = MediaQuery.of(context).padding.top + PetPage._gradientHeightExtra;
-    // 卡片顶部的绝对 y 由折叠头传入（标题栏收缩时卡片会整体上移）
-    final cardTopY = widget.topY + lerpDouble(4, 0, t)!;
-    // 卡片实际高度 = 展开态高度 − 上下 margin
-    final cardH = _PetHeaderDelegate.cardExpandedExtent -
-        12 -
-        lerpDouble(4, 0, t)!;
-    final g0 = PetPage.gradientColorAt(cardTopY, bgH);
-    final g1 = PetPage.gradientColorAt(cardTopY + cardH, bgH);
-    final nameColor = Color.lerp(PetPage._ink, Colors.white, et)!;
+    // 展开内容的固定布局尺寸（不随 t 变化）
+    const vPad = 20.0;
+    const avatarH = 96.0;
+    final avatarSize = lerpDouble(80, 68, et)!;
+    // 错峰淡出：属性行最先消失，天数其次，名字最后，头像最后收尾。
+    // 系数放大到内容在 1/3 行程内全部退场，避免与卡片收缩同时发生导致拥挤
+    final statsFade = Curves.easeIn.transform((1 - t * 6.0).clamp(0.0, 1.0));
+    final daysFade = Curves.easeIn.transform((1 - t * 4.5).clamp(0.0, 1.0));
+    final nameFade = Curves.easeIn.transform((1 - t * 3.5).clamp(0.0, 1.0));
+    final avatarFade = (1 - t * 3.0).clamp(0.0, 1.0);
+    // 内容全部退场后（t>0.35）迷你栏再淡入，两段完全不重叠
+    final miniFade = ((t - 0.35) / 0.65).clamp(0.0, 1.0);
 
     ImageProvider avatarImg(String h) => h.isNotEmpty
         ? NetworkImage(h)
@@ -561,72 +502,52 @@ class _PetProfileCardState extends State<_PetProfileCard> {
             ),
           );
 
-    // 白底→渐变的混合比例：仍要较早褪尽（否则白卡压在渐变上像白蒙层），
-    // 但加 easeOutCubic 让颜色变化有加速度而不是瞬间跳变。
-    final bgMix = Curves.easeOutCubic.transform((t * 4).clamp(0.0, 1.0));
-
     return Container(
-      // 收起时去掉圆角、宽度占满，与标题区融为完整一块
+      // 收起时左右留白略微内收（12→16）、圆角加大，卡面变成一枚白色胶囊，
+      // 始终浮在背景图上
       margin: EdgeInsets.fromLTRB(
-        lerpDouble(12, 0, et)!,
-        lerpDouble(4, 0, et)!,
-        lerpDouble(12, 0, et)!,
+        lerpDouble(12, 16, et)!,
+        lerpDouble(4, 8, et)!,
+        lerpDouble(12, 16, et)!,
         12,
       ),
-      // 白卡样式（保留原始设计）：展开态白色圆角卡片 + 四角浅色同心圆装饰。
-      // 收起时白底褪成背后渐变色，与标题区融为一体。
+      // 卡面恒为白色：白卡与背景图的深紫棕形成浮层关系，
+      // 收起过程中不会出现「卡片褪色」的色块拼接感
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(lerpDouble(20, 0, et)!),
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color.lerp(Colors.white, g0, bgMix)!,
-            Color.lerp(Colors.white, g1, bgMix)!,
-          ],
-        ),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(lerpDouble(20, 26, et)!),
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [
           // 装饰：左上 / 右下 浅色同心圆（收起时随卡片一起淡出，避免浮在渐变上突兀）
           Positioned(top: -80, left: -60, child: Opacity(
-            opacity: 1 - et,
+            opacity: 1 - t,
             child: const _DecoRings(),
           )),
           Positioned(bottom: -80, right: -60, child: Opacity(
-            opacity: 1 - et,
+            opacity: 1 - t,
             child: const _DecoRings(),
           )),
           // 收起时内容顶部对齐、底部溢出部分裁剪（天数/属性行已淡出，无视觉突兀）
           // 注意：只放宽高度约束，宽度沿用父级——否则属性行的 Spacer 无法布局
-          Positioned.fill(
-            child: ClipRect(
-              child: OverflowBox(
-                alignment: Alignment.topCenter,
-                minHeight: 0,
-                maxHeight: double.infinity,
+          ClipRect(
+            child: OverflowBox(
+              alignment: Alignment.topCenter,
+              minHeight: 0,
+              maxHeight: double.infinity,
               child: Padding(
                 padding: EdgeInsets.symmetric(vertical: vPad),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // 大头像：淡出 + 轻微缩小上移，避免被上方 ClipRect 硬切掉半截
-                    Opacity(
-                      opacity: avatarFade,
-                      child: Transform.translate(
-                        offset: Offset(0, -10 * et),
-                        child: Transform.scale(
-                          scale: lerpDouble(1, 0.88, et)!,
-                          child: avatarWidget,
-                        ),
-                      ),
-                    ),
+                    // 大头像轮播：随卡片收缩淡出，最后让位给迷你栏的小头像
+                    Opacity(opacity: avatarFade, child: avatarWidget),
                     // 名字 / 陪伴天数 / 属性行：收起时自下而上错峰淡出。
                     // 不做高度裁剪——裁剪会让名字残半截、与下方天数行叠出重影
                     Column(
                       children: [
-                        SizedBox(height: lerpDouble(8, 4, t)),
+                        const SizedBox(height: 8),
                         // 名字 + 右箭头（点击进入宠物详情）：最后消失
                         Opacity(
                           opacity: nameFade,
@@ -641,23 +562,23 @@ class _PetProfileCardState extends State<_PetProfileCard> {
                                   child: Text(
                                     name,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 15,
                                       fontWeight: FontWeight.w700,
-                                      color: nameColor,
+                                      color: PetPage._ink,
                                     ),
                                   ),
                                 ),
-                                Icon(
+                                const Icon(
                                   Icons.chevron_right,
                                   size: 18,
-                                  color: nameColor,
+                                  color: PetPage._ink,
                                 ),
                               ],
                             ),
                           ),
                         ),
-                        SizedBox(height: lerpDouble(4, 1, t)!),
+                        const SizedBox(height: 4),
                         // 陪伴天数行：点击进入宠物详情页（先于名字消失）
                         Opacity(
                           opacity: daysFade,
@@ -674,7 +595,7 @@ class _PetProfileCardState extends State<_PetProfileCard> {
                             ),
                           ),
                         ),
-                        SizedBox(height: lerpDouble(16, 4, t)!),
+                        const SizedBox(height: 16),
                         // 属性行：品种/性别/年龄/绝育/体重（最先消失）
                         Opacity(
                           opacity: statsFade,
@@ -720,6 +641,50 @@ class _PetProfileCardState extends State<_PetProfileCard> {
               ),
             ),
           ),
+          // 收起态：白色胶囊里的横向迷你档案栏（小头像 + 名字 + 陪伴天数 + 箭头）。
+          // 白底上统一用深色文字，与展开态同一套配色，不出现「白字→黑字」突变
+          Positioned.fill(
+            child: Opacity(
+              opacity: miniFade,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.of(context).pushNamed('/pet/detail'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 16,
+                        backgroundImage: avatarImg(selected?.headimg ?? ''),
+                      ),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          name,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: PetPage._ink,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        '陪伴的第108天',
+                        style: TextStyle(fontSize: 11, color: PetPage._sub),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.chevron_right,
+                        size: 18,
+                        color: PetPage._ink,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
