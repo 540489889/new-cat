@@ -73,44 +73,26 @@ class _PayOrderPageState extends State<PayOrderPage> {
 
   double get _total => (_product?.price ?? 0) * _quantity;
 
-  /// 数量步进器：京东商城样式
-  /// ┌────┬─────┬────┐
-  /// │ −  │  2  │ +  │  方形描边、两侧浅灰底按钮、中间白底数字
-  /// └────┴─────┴────┘
-  /// 点击区 40px 高（TStepper 最大仅 26px，太小不好点）。
+  /// 数量步进器：极简无边框 —— 只有 − / 数字 / +，干净扁平。
+  /// 按钮点击区仍保持 40×40（TStepper 最大仅 26px，太小不好点）。
   Widget _quantityStepper() {
     final canMinus = _quantity > 1;
     final canAdd = _quantity < 99;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(4),
-      child: Container(
-        height: 36,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: const Color(0xFFDCDCDC)),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _stepBtn(Icons.remove, canMinus, () => setState(() => _quantity--)),
+        Container(
+          width: 40,
+          alignment: Alignment.center,
+          child: Text('$_quantity',
+              style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: ShopColors.ink)),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _stepBtn(Icons.remove, canMinus,
-                () => setState(() => _quantity--)),
-            Container(
-              width: 44,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(
-                border: Border(
-                  left: BorderSide(color: Color(0xFFE8E8E8)),
-                  right: BorderSide(color: Color(0xFFE8E8E8)),
-                ),
-              ),
-              child: Text('$_quantity',
-                  style: const TextStyle(
-                      fontSize: 15, color: ShopColors.ink)),
-            ),
-            _stepBtn(Icons.add, canAdd, () => setState(() => _quantity++)),
-          ],
-        ),
-      ),
+        _stepBtn(Icons.add, canAdd, () => setState(() => _quantity++)),
+      ],
     );
   }
 
@@ -119,12 +101,12 @@ class _PayOrderPageState extends State<PayOrderPage> {
       behavior: HitTestBehavior.opaque,
       onTap: enabled ? onTap : null,
       child: Container(
-        width: 36,
-        height: 36,
+        width: 40,
+        height: 40,
         alignment: Alignment.center,
-        color: const Color(0xFFF7F7F7),
         child: Icon(icon,
-            size: 16, color: enabled ? ShopColors.ink : ShopColors.sub),
+            size: 18,
+            color: enabled ? ShopColors.ink : ShopColors.sub),
       ),
     );
   }
