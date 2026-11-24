@@ -284,7 +284,16 @@ class _AvatarFoldDelegate extends SliverPersistentHeaderDelegate {
               fit: BoxFit.fill,
             ),
           ),
-          Positioned.fill(child: _AvatarFoldCard(collapsed: t)),
+          // 头像保持原始布局高度，只整体淡出，由外层 ClipRect 按折叠高度裁切。
+          // 不用 Positioned.fill——那会让 Center 随折叠高度重新居中，
+          // 看起来像头像在向上收缩
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: expandedExtent,
+            child: _AvatarFoldCard(collapsed: t),
+          ),
         ],
       ),
     );
@@ -295,8 +304,9 @@ class _AvatarFoldDelegate extends SliverPersistentHeaderDelegate {
       false;
 }
 
-/// 头像折叠卡：只承载展开态大头像轮播，随折叠淡出并收缩到 0 高度。
-/// 收起态头像移到固定标题栏右侧显示，因此这里不再有迷你栏内容。
+/// 头像折叠卡：只承载展开态大头像轮播，收起时整块淡出。
+/// 布局不随折叠变化（不做缩放 / 位移 / 高度重排），
+/// 收起态头像改由固定标题栏右侧那枚小头像接管。
 class _AvatarFoldCard extends StatelessWidget {
   const _AvatarFoldCard({required this.collapsed});
 
@@ -306,11 +316,11 @@ class _AvatarFoldCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = collapsed.clamp(0.0, 1.0);
     // 背景由 delegate 绘制（top_bg2.png 切片），这里只负责头像轮播淡出。
-    // 收起过程中始终可点，完全收起后无高度不再可见
+    // 淡出要在头像被裁到之前完成，所以系数取 2：t=0.5 时已完全透明
     return Opacity(
-      opacity: 1 - t,
+      opacity: (1 - t * 2).clamp(0.0, 1.0),
       child: IgnorePointer(
-        ignoring: t > 0.9,
+        ignoring: t > 0.4,
         child: const Center(child: _PetAvatarCarousel()),
       ),
     );
