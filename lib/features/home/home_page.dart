@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -21,19 +22,46 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
-  /// 顶部宠物切换条高度（不含状态栏）：昵称行 + 问候语 + 上下留白，实测 66。
-  /// 滚动内容盒子从这里开始，切换条不会被内容遮挡
-  static const double _switchBarHeight = 66;
-
+class _HomePageState extends State<HomePage>
+    with SingleTickerProviderStateMixin {
   /// 视频底色驱动的页面背景色；初始给一个暖灰底色，避免首屏白闪，
   /// 待封面/视频取色后更新为视频真实底色。
   Color? _bgColor = const Color(0xFFEFE9E6);
   final ScrollController _scrollCtrl = ScrollController();
 
+  /// 头图是否已锁定为全屏：使劲下拉越过阈值后置位，松手回弹也不还原。
+  bool _heroLocked = false;
+
+  /// 全屏锁定时累计的拖动位移：上滑超过阈值即退出（不依赖滑动速度）。
+  double _heroLockDragDy = 0;
+
+  /// 头图展开的过渡动画（0 = 正常头图高度，1 = 铺满整屏）。
+  /// 锁定瞬间直接置 1（此刻下拉进度已是 1，无跳变），解锁时平滑收回。
+  late final AnimationController _lockCtrl = AnimationController(
+    vsync: this,
+    duration: _kHeroLockDuration,
+  );
+
+  /// 下拉超过该距离（负向 overscroll）：头图铺满整屏并锁定。
+  static const double _kHeroLockPull = _HeroParallax.expandDistance;
+
+  /// 锁定后向上滚过该距离：退出全屏，画面收回正常头图高度。
+  static const double _kHeroUnlockScroll = 8;
+
+  /// 锁定 / 解锁的过渡时长。
+  static const Duration _kHeroLockDuration = Duration(milliseconds: 240);
+
+  /// 头图当前展开进度：0 = 正常头图高度，1 = 铺满整屏。
+  /// 头图高度与内容下推距离都由它驱动，两者始终同步。
+  double get _heroProgress {
+    final offset = _scrollCtrl.hasClients ? _scrollCtrl.offset : 0.0;
+    return _heroExpandProgress(offset, _lockCtrl.value);
+  }
+
   @override
   void initState() {
     super.initState();
+    _scrollCtrl.addListener(_onHeroScroll);
     // 登录后加载宠物列表与顶部展示视频
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -44,8 +72,37 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    _scrollCtrl.removeListener(_onHeroScroll);
     _scrollCtrl.dispose();
+    _lockCtrl.dispose();
     super.dispose();
+  }
+
+  /// 根据滚动位置维护头图的全屏锁定状态：
+  /// 下拉够狠 → 锁定全屏；锁定后往上滚 → 退出全屏。
+  void _onHeroScroll() {
+    if (!_scrollCtrl.hasClients) return;
+    final offset = _scrollCtrl.offset;
+    if (!_heroLocked) {
+      if (offset <= -_kHeroLockPull) {
+        // 此刻下拉进度已到 1，直接同步锁定进度，避免跳变
+        _lockCtrl.value = 1;
+        setState(() => _heroLocked = true);
+      }
+    } else if (offset > _kHeroUnlockScroll) {
+      _exitHeroFullscreen();
+    }
+  }
+
+  /// 退出头图全屏：复位锁定标记，并让画面连同内容一起平滑收回原位。
+  void _exitHeroFullscreen() {
+    if (!_heroLocked) return;
+    setState(() => _heroLocked = false);
+    _lockCtrl.animateBack(
+      0,
+      duration: _kHeroLockDuration,
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
@@ -53,104 +110,331 @@ class _HomePageState extends State<HomePage> {
     final topInset = MediaQuery.of(context).padding.top;
     final bottomInset = MediaQuery.of(context).padding.bottom;
     final screenH = MediaQuery.of(context).size.height;
-    // 日报对应昨日数据（吸顶标题条与摘要卡共用同一日期）
+    // 日报对应昨日数据（标题条与摘要卡共用同一日期）
     final now = DateTime.now().subtract(const Duration(days: 1));
     final dailyDateText = '${now.month}月${now.day}日 ${now.hour}:00';
-    // 视频占顶部约 38% 屏高，作为「随滚动离场的 Hero 头」；
-    // 与下方内容同属一条滚动流，一起上移，消除「钉死视频 + 独立列表」的割裂感
-    final videoBandH = screenH * 0.4;
+    // 头图（视频/封面）高度：含状态栏，约占屏高 42%
+    final heroH = topInset + screenH * 0.42;
 
-    return Scaffold(
-      // 背景色由视频底部底色驱动，使视频无缝融入页面
-      backgroundColor: _bgColor,
-      body: Stack(
-        children: [
-          // 视频固定为顶部一段（约 38% 屏高）的沉浸头，不铺满全屏，
-          // 避免被下方卡片大面积遮挡；始终渲染、不随滚动离场。
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: videoBandH,
-            child: _HeroVideo(
-              height: videoBandH,
-              bgColor: _bgColor,
-              onColorExtracted: (c) => setState(() => _bgColor = c),
-            ),
-          ),
-          // 滚动内容盒子：高度 = 一屏 − 状态栏 − 顶部切换条（与健康页同一结构），
-          // 内容只在盒子内滚动，越过盒子上边界的部分被 ScrollView 自身裁剪，
-          // 因此永远不会遮挡状态栏 / 宠物切换条
-          Positioned(
-            top: topInset + _switchBarHeight,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: CustomScrollView(
-              controller: _scrollCtrl,
-              slivers: [
-                // 顶部透明区：盒子内留白，使首张卡片仍叠到视频底部 20px
-                SliverToBoxAdapter(
-                  child: Container(
-                    height: (videoBandH - 20 - topInset - _switchBarHeight)
-                        .clamp(0.0, double.infinity),
+    return GestureDetector(
+      // 头图在内容之上（IgnorePointer），左右滑动切换宠物统一在这里处理
+      onHorizontalDragEnd: (details) {
+        final v = details.primaryVelocity;
+        if (v == null || v.abs() < 100) return;
+        final pet = context.read<PetState>();
+        final count = pet.pets.length;
+        if (count <= 1) return;
+        final idx = v < 0
+            ? (pet.selectedIndex + 1) % count
+            : (pet.selectedIndex - 1 + count) % count;
+        if (idx != pet.selectedIndex) pet.selectPet(idx);
+      },
+      child: Scaffold(
+        // 背景色由视频底部底色驱动，使头图与内容面板无缝衔接
+        backgroundColor: _bgColor,
+        body: Stack(
+          children: [
+            // 滚动内容（底层）：首项是头图占位，内容面板紧随其后。
+            // 头图每展开一点，整块内容就被挤下去同样的距离（见 _HeroPushDown），
+            // 让面板跟着头图底边一起下移，而不是被撑大的头图遮住。
+            Positioned.fill(
+              child: _HeroPushDown(
+                scroll: _scrollCtrl,
+                lock: _lockCtrl,
+                distance: screenH - heroH,
+                child: CustomScrollView(
+                  controller: _scrollCtrl,
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
                   ),
-                ),
-                // AI日报渐变标题条：滚动到顶部后吸顶固定（等高 pinned）
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _FixedHeightHeader(
-                    height: _AiDailyHeader.height,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: _AiDailyHeader(dateText: dailyDateText),
+                  slivers: [
+                    // 头图在顶层绘制，这里只撑出它的高度：
+                    // 面板顶边与画面底边严格对齐，不留叠压（否则下拉/回弹时
+                    // 会被撑大的头图压住一条）。
+                    // 首帧 MediaQuery 高度可能为 0，必须 clamp 掉负值
+                    SliverToBoxAdapter(
+                      child: SizedBox(
+                        height: heroH.clamp(0.0, double.infinity),
+                      ),
                     ),
-                  ),
-                ),
-                // 摘要区 + 其余内容
-                SliverToBoxAdapter(
-                  child: Container(
-                    // 左右留 12；底部留白 = bottomInset + 76：避开底部胶囊 TabBar 并给 AI 浮条留位
-                    padding: EdgeInsets.fromLTRB(12, 0, 12, bottomInset + 76),
-                    child: const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _AiDailySummary(),
-                        SizedBox(height: 12),
-                        _AgentDynamicCard(),
-                        SizedBox(height: 12),
-                        _TimelineCard(),
-                      ],
+                    // 内容面板：圆角 + 底色，顶到最上面时盖住头图底部形成层次
+                    SliverToBoxAdapter(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: _bgColor,
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(20),
+                          ),
+                        ),
+                        // 内容通栏贴边（与头图一样贯穿左右）：
+                        // 顶部不留白，AI 日报标题条直接贴着上方视频；
+                        // 底部 bottomInset + 76 避开胶囊 TabBar 与 AI 浮条
+                        padding: EdgeInsets.fromLTRB(
+                          0,
+                          0,
+                          0,
+                          bottomInset + 76,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              height: _AiDailyHeader.height,
+                              child: _AiDailyHeader(dateText: dailyDateText),
+                            ),
+                            const SizedBox(height: 12),
+                            const _AiDailySummary(),
+                            const SizedBox(height: 12),
+                            const _AgentDynamicCard(),
+                            const SizedBox(height: 12),
+                            const _TimelineCard(),
+                          ],
+                        ),
+                      ),
                     ),
+                  ],
+                ),
+              ),
+            ),
+            // 头图（顶层）：随滚动上移被内容推走，下拉时由顶部撑满整屏，
+            // 使劲下拉越过阈值后锁定全屏（松手不回弹）
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: heroH,
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: Listenable.merge([_scrollCtrl, _lockCtrl]),
+                  child: _HeroVideo(
+                    // 头图比可视区更大，给视差与下拉放大留出余量
+                    height: heroH * _kHeroOverscan,
+                    bgColor: _bgColor,
+                    onColorExtracted: (c) => setState(() => _bgColor = c),
+                  ),
+                  builder: (context, child) => _HeroParallax(
+                    offset: _scrollCtrl.hasClients ? _scrollCtrl.offset : 0.0,
+                    progress: _heroProgress,
+                    height: heroH,
+                    fullHeight: screenH,
+                    child: child!,
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
-          // 固定切换条：叠在视频之上，不随滚动移动。
-          // 必须保持 Positioned 定位：Stack 默认 fit:loose 会以非定位子元素
-          // 尺寸决定自身高度，一旦 PetSwitchBar 非定位就会把整屏压成一条。
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: _PetSwitchBar(
-              topInset: topInset,
-              // 淡入底色用半透明白，与内容面板统一（视频始终透出）
-              bgColor: Colors.white.withValues(alpha: 0.9),
+            // 全屏锁定时的交互层：点画面任意处、或上滑都能退出全屏；
+            // 内容可滚动处仍由滚动视图接管拖动，不会互相干扰。
+            // 同时吃掉点击，避免误触被画面盖住的卡片（那些卡片此时不可见）
+            if (_heroLocked)
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: _exitHeroFullscreen,
+                  onVerticalDragStart: (_) => _heroLockDragDy = 0,
+                  onVerticalDragUpdate: (details) {
+                    _heroLockDragDy += details.delta.dy;
+                    if (_heroLockDragDy < -24) _exitHeroFullscreen();
+                  },
+                ),
+              ),
+            // 顶部宠物切换条：首屏浮在头图上，向下滚动时淡出退场（交给内容）
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: AnimatedBuilder(
+                animation: _scrollCtrl,
+                builder: (context, child) {
+                  final offset = _scrollCtrl.hasClients
+                      ? _scrollCtrl.offset
+                      : 0.0;
+                  final t = (offset / 140).clamp(0.0, 1.0);
+                  return IgnorePointer(
+                    ignoring: t >= 1,
+                    child: Opacity(opacity: 1 - t, child: child),
+                  );
+                },
+                child: _PetSwitchBar(
+                  topInset: topInset,
+                  // 半透明白：头图透出，同时保证宠物名可读
+                  bgColor: Colors.white.withValues(alpha: 0.85),
+                ),
+              ),
             ),
-          ),
-          // 底部 AI 问答浮条：与健康页/宠物页一致，紧贴胶囊 TabBar 上方
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: bottomInset + 8,
-            child: const _AiBar(),
-          ),
-        ],
+            // 底部 AI 问答浮条：与健康页/宠物页一致，紧贴胶囊 TabBar 上方
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: bottomInset + 8,
+              child: const _AiBar(),
+            ),
+          ],
+        ),
       ),
     );
   }
+}
+
+/// 头图视差时的放大倍数：比可视区大 25%，为视差位移留出上下余量。
+const double _kHeroOverscan = 1.25;
+
+/// 头图画面的「出血」量：画面本体比可见区域稍大一圈，
+/// 让画面边缘始终落在屏幕外，避免四边出现缝隙或杂边。
+const double _kBleed = 8;
+
+/// 头图展开进度：0 = 正常头图高度，1 = 铺满整屏。
+/// 取「下拉距离」与「锁定动画」的较大值，锁定后即使 overscroll 回弹到 0
+/// 也保持 1（这就是"固定全屏"）。
+double _heroExpandProgress(double offset, double lockT) {
+  final pull = (-offset / _HeroParallax.expandDistance).clamp(0.0, 1.0);
+  return math.max(pull, lockT);
+}
+
+/// 内容整体跟随头图下推：头图展开多少，整块内容就被挤下去多少，
+/// 面板因此始终紧贴头图底边，而不会停留在原处被撑大的头图遮住。
+class _HeroPushDown extends StatelessWidget {
+  const _HeroPushDown({
+    required this.scroll,
+    required this.lock,
+    required this.distance,
+    required this.child,
+  });
+
+  final ScrollController scroll;
+
+  /// 锁定进度（0..1），解锁收起时用来平滑回位。
+  final Animation<double> lock;
+
+  /// 从正常头图高度铺满整屏还需要增加的高度。
+  final double distance;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([scroll, lock]),
+      // child 复用，滚动/展开过程中不会重建整个滚动内容
+      child: child,
+      builder: (context, child) {
+        final offset = scroll.hasClients ? scroll.offset : 0.0;
+        final progress = _heroExpandProgress(offset, lock.value);
+        // 下拉时滚动视图自身已经把整块内容下移了 |offset|（overscroll 弹性），
+        // 这部分必须扣掉，只补足「让面板紧贴头图底边」所需的剩余位移；
+        // 否则两者叠加会让面板与头图之间被拉开一段随下拉变大的空隙。
+        // 面板顶边始终跟着画面底边走：下拉时扣掉 overscroll 已经带来的位移
+        final push = offset < 0
+            ? math.max(0.0, distance * progress + offset)
+            : distance * lock.value;
+        return Transform.translate(offset: Offset(0, push), child: child);
+      },
+    );
+  }
+}
+
+/// 头图视差层：随页面滚动让画面"慢半拍"上移；
+/// 下拉时头图钉在顶部，画面底边一路延伸到屏幕底部；
+/// 力度够大（越过 [expandDistance]）时由外层锁定，松手也不回弹。
+///
+/// 宽度说明：画面盒子恒定铺满屏宽，只按需要变高、底边对齐到目标高度，
+/// 所以下拉过程中横向始终是满的，不会出现左右留白。
+class _HeroParallax extends StatelessWidget {
+  const _HeroParallax({
+    required this.offset,
+    required this.progress,
+    required this.height,
+    required this.fullHeight,
+    required this.child,
+  });
+
+  /// 当前滚动偏移（< 0 表示下拉 overscroll）。
+  final double offset;
+
+  /// 展开进度（0..1），由外层结合锁定状态给出，与内容下推共用同一份。
+  final double progress;
+
+  /// 头图在页面里占的可视高度。
+  final double height;
+
+  /// 整屏高度：下拉展开时画面最多铺到这里。
+  final double fullHeight;
+
+  /// 实际内容层（高度应为 `height * _kHeroOverscan`）。
+  final Widget child;
+
+  /// 视差系数：滚动 1px 画面只上移 (1 - 系数)，
+  /// 位移上限（滚动到 height 时）为 0.12 * height，小于 0.125 * height 的余量。
+  static const double _factor = 0.12;
+
+  /// 下拉多少像素后画面铺满整屏（"使劲下拉"的力度，也是锁定阈值）。
+  static const double expandDistance = 170;
+
+  @override
+  Widget build(BuildContext context) {
+    // 首帧 MediaQuery 可能还没就绪（高度为 0），此时不绘制，避免除零
+    if (height <= 0 || fullHeight <= 0) return const SizedBox.shrink();
+    final screenW = MediaQuery.sizeOf(context).width;
+
+    // 头图盒子随正常滚动 1:1 上移（下拉时钉在顶部不动）
+    final boxDy = offset > 0 ? -offset : 0.0;
+    final expanded = progress > 0;
+
+    final contentH = height * _kHeroOverscan;
+    // 画面底边要落到的位置：从头图底边一路推到屏幕底部
+    final visibleH = height + (fullHeight - height) * progress;
+    // 画面盒子始终「铺满整宽」，只按需要变高：
+    // 高度取 overscan 与展开高度中的较大值，底边对齐 visibleH，
+    // 因此宽度恒为屏宽（不会出现左右留白），也不需要缩放视频层。
+    // 出血只加在顶部与左右（底部要与内容面板严丝合缝地相接），
+    // 让画面边缘落在屏幕外，避免贴边处露出背景色缝隙。
+    final boxH = math.max(contentH, visibleH) + _kBleed * 2;
+    // 展开时把底边对齐到 visibleH（顶部靠 overscan 余量兜住）；
+    // 正常滚动时画面比页面慢半拍，形成视差
+    final dy = expanded ? visibleH - height : offset * _factor;
+
+    return Transform.translate(
+      offset: Offset(0, boxDy),
+      child: ClipRect(
+        // 展开时放开裁剪区（否则向屏幕底部撑开的画面会被裁掉），
+        // 其余时候裁到盒子内，避免画面盖住下方内容
+        clipper: _HeroClip(stretch: expanded),
+        child: SizedBox(
+          height: height,
+          width: double.infinity,
+          child: OverflowBox(
+            alignment: Alignment.bottomCenter,
+            minHeight: 0,
+            maxHeight: double.infinity,
+            child: Transform.translate(
+              offset: Offset(0, dy),
+              child: SizedBox(
+                height: boxH,
+                width: screenW + _kBleed * 2,
+                child: child,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 头图裁剪器：下拉时放开边界（画面撑满整屏），
+/// 其余时候裁到盒子内，避免画面溢出盖住下方内容。
+class _HeroClip extends CustomClipper<Rect> {
+  const _HeroClip({required this.stretch});
+
+  final bool stretch;
+
+  @override
+  Rect getClip(Size size) => stretch
+      ? Rect.fromLTRB(0, -size.height * 2, size.width, size.height * 5)
+      : Rect.fromLTRB(0, 0, size.width, size.height);
+
+  @override
+  bool shouldReclip(covariant _HeroClip oldClipper) =>
+      oldClipper.stretch != stretch;
 }
 
 /// 顶部视频区：全宽通栏、从屏幕最顶端（含状态栏）铺下来，无圆角。
@@ -639,30 +923,7 @@ class _AiBar extends StatelessWidget {
   }
 }
 
-/// 等高吸顶 SliverDelegate：minExtent == maxExtent == 固定高度，
-/// 避免 layoutExtent > paintExtent 的 SliverGeometry 异常。
-class _FixedHeightHeader extends SliverPersistentHeaderDelegate {
-  const _FixedHeightHeader({required this.height, required this.child});
-
-  final double height;
-  final Widget child;
-
-  @override
-  double get minExtent => height;
-
-  @override
-  double get maxExtent => height;
-
-  @override
-  Widget build(
-          BuildContext context, double shrinkOffset, bool overlapsContent) =>
-      child;
-
-  @override
-  bool shouldRebuild(covariant _FixedHeightHeader old) => false;
-}
-
-/// AI日报渐变标题条：滚动时吸顶固定。
+/// AI日报渐变标题条（随内容一起滚动，不再吸顶）。
 class _AiDailyHeader extends StatelessWidget {
   const _AiDailyHeader({required this.dateText});
 
@@ -686,14 +947,19 @@ class _AiDailyHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Text('AI日报',
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white)),
+          const Text(
+            'AI日报',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
           const Spacer(),
-          Text(dateText,
-              style: const TextStyle(fontSize: 12, color: Colors.white)),
+          Text(
+            dateText,
+            style: const TextStyle(fontSize: 12, color: Colors.white),
+          ),
         ],
       ),
     );
@@ -730,103 +996,103 @@ class _AiDailySummary extends StatelessWidget {
         ],
       ),
       child: Padding(
-            // 顶部留白：标题条已改为直角背景，内容需与标题拉开距离
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-            child: Column(
+        // 顶部留白：标题条已改为直角背景，内容需与标题拉开距离
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 内容：爪印图标 + 摘要文案
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 内容：爪印图标 + 摘要文案
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF3ECEA),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Icon(Icons.pets, color: _theme, size: 24),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: _titleColor,
-                              height: 1.4,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            subtitle,
-                            style: TextStyle(fontSize: 12, color: _subColor),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3ECEA),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.pets, color: _theme, size: 24),
                 ),
-                const SizedBox(height: 12),
-                // 底部：健康标签 + 详情入口
-                Row(
-                  children: [
-                    for (int i = 0; i < tags.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: _titleColor,
+                          height: 1.4,
                         ),
-                        decoration: BoxDecoration(
-                          color: _chipBg,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          tags[i],
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF7F6370),
-                          ),
-                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: TextStyle(fontSize: 12, color: _subColor),
                       ),
                     ],
-                    const Spacer(),
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const AiDailyDetailPage(),
-                        ),
-                      ),
-                      child: const Row(
-                        children: [
-                          Text(
-                            '详情',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF7F6370),
-                            ),
-                          ),
-                          Icon(
-                            Icons.chevron_right,
-                            size: 16,
-                            color: Color(0xFF7F6370),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),
-          ),
+            const SizedBox(height: 12),
+            // 底部：健康标签 + 详情入口
+            Row(
+              children: [
+                for (int i = 0; i < tags.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _chipBg,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      tags[i],
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF7F6370),
+                      ),
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const AiDailyDetailPage(),
+                    ),
+                  ),
+                  child: const Row(
+                    children: [
+                      Text(
+                        '详情',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF7F6370),
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right,
+                        size: 16,
+                        color: Color(0xFF7F6370),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

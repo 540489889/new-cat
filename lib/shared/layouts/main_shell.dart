@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 
 import '../../features/health/health_page.dart';
@@ -6,7 +8,7 @@ import '../../features/pet/pet_page.dart';
 import '../../features/settings/settings_page.dart';
 import '../widgets/status_bar_style.dart';
 
-/// 主框架：底部毛玻璃悬浮 TabBar + IndexedStack 保持页面状态。
+/// 主框架：底部 iOS App Store 风格毛玻璃悬浮 TabBar + IndexedStack 保持页面状态。
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
 
@@ -25,16 +27,20 @@ class _MainShellState extends State<MainShell> {
   ];
 
   // 底部 Tab 数据：沿用项目自定义图标（assets/images/icon/tabbar1~4.png）
-  static const List<({String label, String icon})> _tabs = <({String label, String icon})>[
-    (label: '管家', icon: 'assets/images/icon/tabbar1.png'),
-    (label: '宠物', icon: 'assets/images/icon/tabbar2.png'),
-    (label: '健康', icon: 'assets/images/icon/tabbar3.png'),
-    (label: '我的', icon: 'assets/images/icon/tabbar4.png'),
-  ];
+  static const List<({String label, String icon})> _tabs =
+      <({String label, String icon})>[
+        (label: '管家', icon: 'assets/images/icon/tabbar1.png'),
+        (label: '宠物', icon: 'assets/images/icon/tabbar2.png'),
+        (label: '健康', icon: 'assets/images/icon/tabbar3.png'),
+        (label: '我的', icon: 'assets/images/icon/tabbar4.png'),
+      ];
 
-  // 选中/未选中颜色（品牌紫 / 中性灰）
+  // 选中 / 未选中颜色（品牌玫瑰 / 中性浅灰，靠颜色差突出当前页）
   static const Color _selectedColor = Color(0xFF7F6370);
-  static const Color _unselectedColor = Color(0xFF999999);
+  static const Color _unselectedColor = Color(0xFF8E8993);
+
+  /// 胶囊高度：圆角取其一半，得到完全圆润的两端。
+  static const double _barHeight = 54;
 
   @override
   Widget build(BuildContext context) {
@@ -42,109 +48,97 @@ class _MainShellState extends State<MainShell> {
     // 间距过大，这里只保留少量间隙让胶囊贴近屏幕底部；无安全区的设备保留 12px。
     final bottomInset = MediaQuery.of(context).padding.bottom;
     final bottomGap = bottomInset > 0
-        ? (bottomInset - 22).clamp(6.0, 24.0)
+        ? (bottomInset - 24).clamp(6.0, 20.0)
         : 12.0;
+
+    final radius = BorderRadius.circular(_barHeight / 2);
 
     return StatusBarStyle(
       child: Scaffold(
-        // 让页面内容延伸到悬浮胶囊下方，胶囊左右空隙透出的是页面内容而非纯色背景
+        // 让页面内容延伸到悬浮胶囊下方，毛玻璃才能透出背后滚动的内容
         extendBody: true,
         body: IndexedStack(index: _currentIndex, children: _pages),
         bottomNavigationBar: Padding(
-          padding: EdgeInsets.only(bottom: bottomGap),
-          child: SizedBox(
-              height: 64,
-              child: Stack(
-                children: [
-                  // 左右内缩 20、贴顶（去掉顶部内间距），自身不透明纯白遮挡背后内容
-                  Positioned(
-                    left: 20,
-                    right: 20,
-                    top: 0,
-                    height: 64,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        // 不透明纯白：栏体直接遮挡内容；阴影提供悬浮/分区感
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(32),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x1A3D2E33),
-                            blurRadius: 18,
-                            offset: Offset(0, -2),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                      children: [
-                        for (int i = 0; i < _tabs.length; i++)
-                          Expanded(
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () => setState(() => _currentIndex = i),
-                              // 参考京东金融样式：选中 = 品牌色实心圆底放白色图标 + 品牌色文字；
-                              // 未选中 = 原样图标 + 灰字，无底。
-                              child: Center(
-                                child: i == _currentIndex
-                                    ? Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          // 品牌色实心圆底 + 白色图标（无浅灰背景块）
-                                          Container(
-                                            width: 34,
-                                            height: 34,
-                                            decoration: const BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              color: _selectedColor,
-                                            ),
-                                            alignment: Alignment.center,
-                                            child: Image.asset(_tabs[i].icon,
-                                                width: 18,
-                                                height: 18,
-                                                color: Colors.white),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            _tabs[i].label,
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
-                                              color: _selectedColor,
-                                            ),
-                                          ),
-                                        ],
-                                      )
-                                    : Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          // 图标区高度与选中的圆底一致，保证选中/未选中文字基线对齐
-                                          SizedBox(
-                                            height: 34,
-                                            child: Center(
-                                              child: Image.asset(_tabs[i].icon,
-                                                  width: 22, height: 22),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            _tabs[i].label,
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              color: _unselectedColor,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
+          // iOS 风格：胶囊左右留边、贴底部悬浮
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            bottom: bottomGap,
+          ),
+          child: DecoratedBox(
+            // 阴影放在裁剪层之外，避免被 ClipRRect 切掉
+            decoration: BoxDecoration(
+              borderRadius: radius,
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x1F3D2E33),
+                  blurRadius: 20,
+                  offset: Offset(0, 6),
                 ),
               ],
             ),
+            child: ClipRRect(
+              borderRadius: radius,
+              child: BackdropFilter(
+                // 毛玻璃：模糊背后的页面内容
+                filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+                child: Container(
+                  height: _barHeight,
+                  decoration: BoxDecoration(
+                    // 半透明白 + 模糊 = iOS 玻璃质感
+                    color: Colors.white.withValues(alpha: 0.78),
+                    borderRadius: radius,
+                    // 一道细亮边，强化玻璃的边界轮廓
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.6),
+                      width: 0.8,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      for (int i = 0; i < _tabs.length; i++) _buildTabItem(i),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
+        ),
+      ),
+    );
+  }
+
+  /// 单个 Tab：图标在上、文字在下，选中只换颜色（不再加实心圆底），
+  /// 与 iOS App Store 的底部栏一致。
+  Widget _buildTabItem(int index) {
+    final active = index == _currentIndex;
+    final color = active ? _selectedColor : _unselectedColor;
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => _currentIndex = index),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Image.asset(
+              _tabs[index].icon,
+              width: 22,
+              height: 22,
+              // 单色图标按选中状态整体着色
+              color: color,
+              colorBlendMode: BlendMode.srcIn,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              _tabs[index].label,
+              style: TextStyle(
+                fontSize: 10,
+                height: 1.1,
+                fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                color: color,
+              ),
+            ),
+          ],
         ),
       ),
     );
