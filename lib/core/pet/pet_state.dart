@@ -20,6 +20,10 @@ class PetState extends ChangeNotifier {
   String? _coverUrl;
   List<String> _words = [];
 
+  /// 展示信息请求序号：快速切换宠物时，用序号丢弃过期响应，避免旧宠物的
+  /// 视频/封面覆盖当前选中宠物。
+  int _showEpoch = 0;
+
   PetState() {
     // 登录态变化时（退出登录）重置，便于重新登录后再次拉取
     AuthService.instance.addListener(_onAuthChanged);
@@ -68,6 +72,13 @@ class PetState extends ChangeNotifier {
   void selectPet(int index) {
     if (index < 0 || index >= _pets.length || index == _selectedIndex) return;
     _selectedIndex = index;
+    // 立即清掉上一个宠物的展示信息，否则切换瞬间顶部仍是旧宠物的视频，
+    // 与新宠物昵称对不上号（先用列表自带封面兜底，请求返回后再补全）。
+    _mediaUrl = null;
+    _words = [];
+    final listImg = _pets[index].petUserShow?['imgUrl'] as String?;
+    _coverUrl =
+        (listImg != null && listImg.isNotEmpty) ? listImg : null;
     notifyListeners();
     _loadShowForSelected();
     _setDefaultPet(_pets[index].id);
@@ -103,6 +114,10 @@ class PetState extends ChangeNotifier {
         debugPrint('[PetState] pets=${_pets.length}');
         final defaultIdx = _pets.indexWhere((p) => p.isDefault);
         _selectedIndex = defaultIdx >= 0 ? defaultIdx : 0;
+        // 列表刷新后展示信息作废，重新拉取，避免残留上一个宠物的视频
+        _mediaUrl = null;
+        _coverUrl = null;
+        _words = [];
         await _loadShowForSelected();
       }
     } catch (e) {
@@ -124,6 +139,7 @@ class PetState extends ChangeNotifier {
   Future<void> _loadShowForSelected() async {
     final pet = selectedPet;
     if (pet == null) return;
+    final epoch = ++_showEpoch;
     // 列表自带封面先兜底
     final listImg = pet.petUserShow?['imgUrl'] as String?;
     if (listImg != null && listImg.isNotEmpty) _coverUrl = listImg;
@@ -132,6 +148,8 @@ class PetState extends ChangeNotifier {
       final res = await ApiClient.instance.get('/app/pet/show/${pet.id}');
       debugPrint(
           '[PetState] /app/pet/show/${pet.id} isSuccess=${res.isSuccess} msg=${res.message} data=${res.data}');
+      // 响应回来时已切到别的宠物：丢弃，避免旧宠物数据覆盖当前选中项
+      if (epoch != _showEpoch) return;
       if (res.isSuccess && res.isMap) {
         final show = PetShow.fromJson(res.asMap);
         // mediaUrl 为空时显式清空，便于 UI 走封面兜底
@@ -146,6 +164,7 @@ class PetState extends ChangeNotifier {
     } catch (e) {
       debugPrint('[PetState] loadShow error: $e');
     }
+    if (epoch != _showEpoch) return;
     debugPrint(
         '[PetState] => mediaUrl=$_mediaUrl coverUrl=$_coverUrl words=$_words');
     notifyListeners();

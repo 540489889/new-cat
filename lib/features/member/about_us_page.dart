@@ -32,21 +32,13 @@ class AboutUsPage extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(12, 24, 12, 24),
                 children: [
-                  // Logo
+                  // Logo：图片自带透明圆角，直接展示（不加白色底衬托）
                   Center(
-                    child: Container(
+                    child: Image.asset(
+                      'assets/images/logo.png',
                       width: 88,
                       height: 88,
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(22),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: Image.asset('assets/images/logo.png',
-                            fit: BoxFit.cover),
-                      ),
+                      fit: BoxFit.contain,
                     ),
                   ),
                   const SizedBox(height: 14),

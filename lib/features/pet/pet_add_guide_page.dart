@@ -4,7 +4,6 @@ import 'package:tdesign_flutter/tdesign_flutter.dart';
 
 import '../../core/http/api_client.dart';
 import '../../core/pet/pet_api.dart';
-import '../../core/pet/pet_models.dart';
 import '../../core/pet/pet_state.dart';
 import '../../core/router/app_router.dart';
 import '../../shared/widgets/date_picker_sheet.dart';
@@ -16,19 +15,10 @@ import '../shop/shop_theme.dart';
 /// 添加宠物 4 步向导：
 /// ① 类型（猫/狗）→ ② 上传照片（正脸/侧身/全身）→ ③ 介绍宠物（语音/手动）→ ④ 资料（头像/性别/品种/昵称/生日/体重）→ 提交。
 /// 顶部 4 段进度条，样式对齐 UI 图（紫粉高亮 + 灰色未完成）。
+/// 注意：本页只负责「新增宠物」流程。
+/// 已有宠物的单项资料修改走 [PetFieldEditPage]（单字段编辑，没有上一步）。
 class PetAddGuidePage extends StatefulWidget {
-  const PetAddGuidePage({
-    super.key,
-    this.initialPet,
-    this.editTarget,
-  });
-
-  /// 编辑模式：传入已有宠物 + 目标步骤，隐藏进度条，改完直接返回数据。
-  /// editTarget: type / photo / nickname / detail（性别/生日/体重/绝育）。
-  final PetInfo? initialPet;
-  final String? editTarget;
-
-  bool get isEditMode => initialPet != null && editTarget != null;
+  const PetAddGuidePage({super.key});
 
   @override
   State<PetAddGuidePage> createState() => _PetAddGuidePageState();
@@ -77,45 +67,6 @@ class _PetAddGuidePageState extends State<PetAddGuidePage> {
   bool get _allPhotosUploaded =>
       _petPhotos.every((url) => url != null && url.isNotEmpty);
 
-  bool get _editing => widget.isEditMode;
-
-  @override
-  void initState() {
-    super.initState();
-    final pet = widget.initialPet;
-    if (!_editing || pet == null) return;
-    // 回填已有宠物资料
-    _type = pet.type;
-    _variety = pet.variety;
-    _sex = pet.sex;
-    _sterilization = pet.sterilization;
-    _birthday = DateTime.tryParse(pet.birthday);
-    _weightCtrl.text = pet.weight > 0 ? pet.weight.toStringAsFixed(1) : '';
-    _nameCtrl.text = pet.nickname;
-    _headimg = pet.headimg;
-    _detailSex = _sex;
-    _detailSterilization = _sterilization;
-    _petPhotos[0] = pet.headimg.isNotEmpty ? pet.headimg : null;
-    // 根据目标打开对应步骤 / 子页
-    switch (widget.editTarget) {
-      case 'type':
-        _step = 0;
-        break;
-      case 'photo':
-        _step = 1;
-        break;
-      case 'nickname':
-        _step = 2;
-        _manualMode = true;
-        break;
-      case 'detail':
-        _step = 2;
-        _manualMode = true;
-        _detailStep = true;
-        break;
-    }
-  }
-
   @override
   void dispose() {
     _introCtrl.dispose();
@@ -127,29 +78,7 @@ class _PetAddGuidePageState extends State<PetAddGuidePage> {
   }
 
   void _next() {
-    if (_editing) {
-      _finishEdit();
-      return;
-    }
     if (_step < _totalSteps - 1) setState(() => _step++);
-  }
-
-  /// 编辑模式：把当前状态组装成 PetInfo 返回给编辑页。
-  void _finishEdit() {
-    final pet = widget.initialPet!;
-    Navigator.of(context).pop<PetInfo>(PetInfo(
-      id: pet.id,
-      nickname: _nameCtrl.text.trim().isEmpty ? pet.nickname : _nameCtrl.text.trim(),
-      isDefault: pet.isDefault,
-      petUserShow: pet.petUserShow,
-      headimg: _headimg,
-      type: _type.isEmpty ? pet.type : _type,
-      variety: _variety.isEmpty ? pet.variety : _variety,
-      sex: _sex,
-      sterilization: _sterilization,
-      birthday: _birthday?.toIso8601String() ?? pet.birthday,
-      weight: double.tryParse(_weightCtrl.text.trim()) ?? pet.weight,
-    ));
   }
 
   void _previous() {
@@ -278,9 +207,9 @@ class _PetAddGuidePageState extends State<PetAddGuidePage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _topBar(),
-              if (!_editing) _progressBar(),
+              _progressBar(),
               Expanded(child: _stepBody()),
-              if (_step == 3 && !_editing)
+              if (_step == 3)
                 SafeArea(
                   top: false,
                   child: Padding(
@@ -978,13 +907,7 @@ class _PetAddGuidePageState extends State<PetAddGuidePage> {
               child: GestureDetector(
                 onTap: _nameCtrl.text.trim().isEmpty
                     ? null
-                    : () {
-                        if (_editing) {
-                          _finishEdit();
-                        } else {
-                          setState(() => _detailStep = true);
-                        }
-                      },
+                    : () => setState(() => _detailStep = true),
                 child: Container(
                   decoration: BoxDecoration(
                     color: Colors.white,

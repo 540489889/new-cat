@@ -22,15 +22,44 @@ class Pet3DGeneratedPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const SizedBox(height: 28),
-            const Text(
-              '生成专属形象',
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF222222)),
+            // 顶部导航：圆形返回 + 居中标题（与 3D 生成页同一套样式）
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).maybePop(),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                              color: Color(0x14000000),
+                              blurRadius: 8,
+                              offset: Offset(0, 2)),
+                        ],
+                      ),
+                      child: const Icon(Icons.keyboard_arrow_left,
+                          color: Color(0xFF222222), size: 28),
+                    ),
+                  ),
+                  const Expanded(
+                    child: Center(
+                      child: Text('生成专属形象',
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF222222))),
+                    ),
+                  ),
+                  const SizedBox(width: 40),
+                ],
+              ),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 20),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Container(

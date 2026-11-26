@@ -114,43 +114,44 @@ class _TitleRow extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
         child: Row(
-        children: [
-          // 标题压在深紫棕背景图上，用白字保证对比度
-          const Text(
-            '宠物',
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
+          children: [
+            // 标题压在深紫棕背景图上，用白字保证对比度
+            const Text(
+              '宠物',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
             ),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            '$count',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.white.withValues(alpha: 0.7),
+            const SizedBox(width: 4),
+            Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white.withValues(alpha: 0.7),
+              ),
             ),
-          ),
-          const Spacer(),
-          // 添加宠物：直接用设计稿切图（紫色胶囊 + 号 + 文案），
-          // 高度 30、宽度按图片比例自适应；点开引导页，返回 true 说明新增成功
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () async {
-              final changed =
-                  await Navigator.of(context).pushNamed<bool>(AppRoutes.petAdd);
-              if (changed == true && context.mounted) {
-                await context.read<PetState>().refresh();
-              }
-            },
-            child: Image.asset(
-              'assets/images/icon/btn1.png',
-              height: 30,
-              fit: BoxFit.contain,
+            const Spacer(),
+            // 添加宠物：直接用设计稿切图（紫色胶囊 + 号 + 文案），
+            // 高度 30、宽度按图片比例自适应；点开引导页，返回 true 说明新增成功
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () async {
+                final changed = await Navigator.of(
+                  context,
+                ).pushNamed<bool>(AppRoutes.petAdd);
+                if (changed == true && context.mounted) {
+                  await context.read<PetState>().refresh();
+                }
+              },
+              child: Image.asset(
+                'assets/images/icon/btn1.png',
+                height: 30,
+                fit: BoxFit.contain,
+              ),
             ),
-          ),
-        ],
+          ],
         ),
       ),
     );
@@ -337,6 +338,7 @@ class _PetProfileCardState extends State<_PetProfileCard> {
   PageController? _pageCtrl;
   int _petCount = 0; // 记录已绑定控制器的宠物数量，变化时重建
   PetState? _pet; // 缓存 PetState 引用，供 dispose 安全移除监听（避免卸载时查祖先）
+  int? _animatingTo; // 正在进行的分页动画目标，用于去重（避免同一目标被反复重启）
 
   @override
   void didChangeDependencies() {
@@ -348,6 +350,7 @@ class _PetProfileCardState extends State<_PetProfileCard> {
     if (_pageCtrl == null || _petCount != pet.pets.length) {
       _pageCtrl?.dispose();
       pet.removeListener(_syncPage);
+      _animatingTo = null;
       _petCount = pet.pets.length;
       if (pet.pets.isNotEmpty) {
         final idx = pet.selectedIndex.clamp(0, pet.pets.length - 1);
@@ -360,26 +363,29 @@ class _PetProfileCardState extends State<_PetProfileCard> {
     }
   }
 
+  /// 统一的分页动画入口。
+  /// 同一目标正在进行时直接忽略——否则 selectPet 触发的监听、
+  /// 接口回来后的 notify 都会再启动一次动画，视觉上就是「走到一半被拽回去重跑」。
+  void _animateToPage(int target) {
+    final ctrl = _pageCtrl;
+    if (ctrl == null || !ctrl.hasClients) return;
+    if ((ctrl.page?.round() ?? -1) == target) return;
+    if (_animatingTo == target) return;
+    _animatingTo = target;
+    ctrl
+        .animateToPage(
+          target,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+        )
+        .whenComplete(() => _animatingTo = null);
+  }
+
   // 外部（底部面板）切换宠物时，同步轮播到对应页
   void _syncPage() {
     final pet = context.read<PetState>();
-    if (_pageCtrl?.hasClients == true && pet.pets.isNotEmpty) {
-      final target = pet.selectedIndex.clamp(0, pet.pets.length - 1);
-      if (_pageCtrl!.page?.round() != target) {
-        _pageCtrl!.animateToPage(
-          target,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
-      }
-    }
-  }
-
-  // 点击头像切换到下一个宠物
-  void _tapNext(PetState pet) {
-    if (pet.pets.length < 2) return;
-    final next = (pet.selectedIndex + 1) % pet.pets.length;
-    pet.selectPet(next);
+    if (pet.pets.isEmpty) return;
+    _animateToPage(pet.selectedIndex.clamp(0, pet.pets.length - 1));
   }
 
   @override
@@ -430,59 +436,60 @@ class _PetProfileCardState extends State<_PetProfileCard> {
         ? NetworkImage(h)
         : const AssetImage('assets/images/group-1.png');
 
-    // 大头像（当前宠物带粉色描边圆，侧边探出的不带）
+    // 大头像（当前宠物带粉色描边，侧边探出的不带）。
+    // padding 固定为 5：若随 ringed 在 5 / 0 之间切换，轮播跨页时头像内容
+    // 尺寸会突变（差 10dp），看起来就是「跳一下」——描边只改颜色不改几何
     Widget bigAvatar(String h, {bool ringed = true}) => Container(
       width: avatarSize,
       height: avatarSize,
-      padding: EdgeInsets.all(ringed ? 5 : 0),
-      decoration: ringed
-          ? BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: _ring, width: 2),
-            )
-          : null,
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: ringed ? _ring : Colors.transparent,
+          width: 2,
+        ),
+      ),
       child: CircleAvatar(backgroundImage: avatarImg(h)),
     );
 
-    // 头像轮播：3D 封面流，多宠物可左右滑动/点击切换；单宠物退化为静态大头像
+    // 头像轮播：3D 封面流，只支持左右滑动切换（点击不切换）；
+    // 单宠物退化为静态大头像
     final avatarWidget = pets.isEmpty
         ? bigAvatar(selected?.headimg ?? '')
-        : GestureDetector(
-            onTap: () => _tapNext(petState),
-            child: SizedBox(
-              height: avatarH,
-              child: PageView.builder(
-                controller: _pageCtrl,
-                itemCount: pets.length,
-                clipBehavior: Clip.none,
-                onPageChanged: (i) => petState.selectPet(i),
-                itemBuilder: (_, i) {
-                  final head = pets[i].headimg;
-                  return AnimatedBuilder(
-                    animation: _pageCtrl!,
-                    builder: (ctx, __) {
-                      final page =
-                          _pageCtrl!.page ?? petState.selectedIndex.toDouble();
-                      final diff = i - page;
-                      // 侧边头像明显缩小（约0.6倍），贴近当前头像，还原设计稿
-                      final scale = (1 - diff.abs() * 0.42).clamp(0.55, 1.0);
-                      // 轻微透视即可，设计稿侧头像基本是平的
-                      final angle = diff * 0.12;
-                      final ringed = diff.abs() < 0.5; // 仅当前头像带粉色描边
-                      return Transform(
-                        alignment: Alignment.center,
-                        transform: Matrix4.identity()
-                          ..setEntry(3, 2, 0.0016) // 透视深度
-                          ..rotateY(angle),
-                        child: Transform.scale(
-                          scale: scale,
-                          child: Center(child: bigAvatar(head, ringed: ringed)),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
+        : SizedBox(
+            height: avatarH,
+            child: PageView.builder(
+              controller: _pageCtrl,
+              itemCount: pets.length,
+              clipBehavior: Clip.none,
+              onPageChanged: (i) => petState.selectPet(i),
+              itemBuilder: (_, i) {
+                final head = pets[i].headimg;
+                return AnimatedBuilder(
+                  animation: _pageCtrl!,
+                  builder: (ctx, __) {
+                    final page =
+                        _pageCtrl!.page ?? petState.selectedIndex.toDouble();
+                    final diff = i - page;
+                    // 侧边头像明显缩小（约0.6倍），贴近当前头像，还原设计稿
+                    final scale = (1 - diff.abs() * 0.42).clamp(0.55, 1.0);
+                    // 轻微透视即可，设计稿侧头像基本是平的
+                    final angle = diff * 0.12;
+                    final ringed = diff.abs() < 0.5; // 仅当前头像带粉色描边
+                    return Transform(
+                      alignment: Alignment.center,
+                      transform: Matrix4.identity()
+                        ..setEntry(3, 2, 0.0016) // 透视深度
+                        ..rotateY(angle),
+                      child: Transform.scale(
+                        scale: scale,
+                        child: Center(child: bigAvatar(head, ringed: ringed)),
+                      ),
+                    );
+                  },
+                );
+              },
             ),
           );
 
@@ -505,14 +512,16 @@ class _PetProfileCardState extends State<_PetProfileCard> {
       child: Stack(
         children: [
           // 装饰：左上 / 右下 浅色同心圆（收起时随卡片一起淡出，避免浮在渐变上突兀）
-          Positioned(top: -80, left: -60, child: Opacity(
-            opacity: 1 - t,
-            child: const _DecoRings(),
-          )),
-          Positioned(bottom: -80, right: -60, child: Opacity(
-            opacity: 1 - t,
-            child: const _DecoRings(),
-          )),
+          Positioned(
+            top: -80,
+            left: -60,
+            child: Opacity(opacity: 1 - t, child: const _DecoRings()),
+          ),
+          Positioned(
+            bottom: -80,
+            right: -60,
+            child: Opacity(opacity: 1 - t, child: const _DecoRings()),
+          ),
           // 收起时内容顶部对齐、底部溢出部分裁剪（天数/属性行已淡出，无视觉突兀）
           // 注意：只放宽高度约束，宽度沿用父级——否则属性行的 Spacer 无法布局
           ClipRect(
@@ -634,46 +643,46 @@ class _PetProfileCardState extends State<_PetProfileCard> {
               child: Opacity(
                 opacity: miniFade,
                 child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.of(context).pushNamed('/pet/detail'),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 16,
-                        backgroundImage: avatarImg(selected?.headimg ?? ''),
-                      ),
-                      const SizedBox(width: 10),
-                      Flexible(
-                        child: Text(
-                          name,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: PetPage._ink,
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).pushNamed('/pet/detail'),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 16,
+                          backgroundImage: avatarImg(selected?.headimg ?? ''),
+                        ),
+                        const SizedBox(width: 10),
+                        Flexible(
+                          child: Text(
+                            name,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: PetPage._ink,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        '陪伴的第108天',
-                        style: TextStyle(fontSize: 11, color: PetPage._sub),
-                      ),
-                      const SizedBox(width: 4),
-                      const Icon(
-                        Icons.chevron_right,
-                        size: 18,
-                        color: PetPage._ink,
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                        const Text(
+                          '陪伴的第108天',
+                          style: TextStyle(fontSize: 11, color: PetPage._sub),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.chevron_right,
+                          size: 18,
+                          color: PetPage._ink,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
         ],
       ),
     );

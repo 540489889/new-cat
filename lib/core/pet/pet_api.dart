@@ -5,6 +5,7 @@ import '../http/api_client.dart';
 /// 请求均为 JSON body：
 /// - 添加：POST /app/pet/add
 /// - 编辑：POST /app/pet/update
+/// - 删除：POST /app/pet/remove/{id}
 /// 图片先经 /app/user/file/upload 上传拿到 URL，再随表单提交。
 class PetApiService {
   PetApiService._();
@@ -68,5 +69,10 @@ class PetApiService {
       'imgBody': imgBody ?? '',
       'imgWhole': imgWhole ?? '',
     });
+  }
+
+  /// 删除宠物：`POST /app/pet/remove/{id}`（路径参数，与参考项目 f-cat 一致）
+  static Future<ApiResponse> deletePet(int id) {
+    return ApiClient.instance.post('/app/pet/remove/$id');
   }
 }

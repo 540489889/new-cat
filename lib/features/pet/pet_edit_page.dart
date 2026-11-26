@@ -8,7 +8,7 @@ import '../../core/pet/pet_state.dart';
 import '../../core/router/app_router.dart';
 import '../../shared/widgets/status_bar_style.dart';
 import 'pet_3d_generated_page.dart';
-import 'pet_add_guide_page.dart';
+import 'pet_field_edit_page.dart';
 import '../shop/shop_theme.dart';
 
 /// 添加 / 编辑宠物页。
@@ -36,6 +36,7 @@ class _PetEditPageState extends State<PetEditPage> {
   String _sterilization = 'n'; // y / n
   DateTime? _birthday;
   bool _saving = false;
+  bool _deleting = false;
 
   bool get _isEdit => widget.pet != null;
 
@@ -75,8 +76,8 @@ class _PetEditPageState extends State<PetEditPage> {
     return _sterilization == 'y' ? '绝育$gender' : gender;
   }
 
-  /// 选头像 → 上传 → 回填 URL
-  /// 跳转到添加向导的对应步骤编辑单个字段，完成后回填。
+  /// 打开单字段编辑页修改一项资料，完成后回填。
+  /// target: photo / nickname / type / detail
   Future<void> _editViaGuide(String target) async {
     final current = PetInfo(
       id: widget.pet?.id ?? 0,
@@ -93,10 +94,7 @@ class _PetEditPageState extends State<PetEditPage> {
     );
     final updated = await Navigator.of(context).push<PetInfo>(
       MaterialPageRoute<PetInfo>(
-        builder: (_) => PetAddGuidePage(
-          initialPet: current,
-          editTarget: target,
-        ),
+        builder: (_) => PetFieldEditPage(pet: current, field: target),
       ),
     );
     if (updated == null || !mounted) return;
@@ -163,6 +161,77 @@ class _PetEditPageState extends State<PetEditPage> {
     }
   }
 
+  /// 删除确认弹窗（文案与交互对齐参考项目 f-cat）
+  void _showDeleteDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('确定删除宠物吗',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center),
+        content: const Text('删除后所有宠物数据将清空',
+            style: TextStyle(color: Colors.black54),
+            textAlign: TextAlign.center),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.black54,
+                    side: const BorderSide(color: Color(0xFFDDDDDD)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24)),
+                  ),
+                  child: const Text('不删除'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _deletePet();
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFFF4D4F),
+                    side: const BorderSide(color: Color(0xFFFF4D4F)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24)),
+                  ),
+                  child: const Text('删除'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 调用删除接口：成功后刷新宠物列表并退出编辑页
+  Future<void> _deletePet() async {
+    if (_deleting) return;
+    setState(() => _deleting = true);
+    try {
+      final res = await PetApiService.deletePet(widget.pet!.id);
+      if (!mounted) return;
+      if (!res.isSuccess) {
+        TToast.showText(res.message, context: context);
+        return;
+      }
+      await context.read<PetState>().refresh();
+      if (!mounted) return;
+      TToast.showSuccess('已删除', context: context);
+      Navigator.of(context).pop(true);
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).padding.bottom;
@@ -173,6 +242,25 @@ class _PetEditPageState extends State<PetEditPage> {
           title: Text(_isEdit ? '编辑宠物资料' : '添加宠物'),
           useDefaultBack: true,
           useSafeArea: true,
+          // 编辑态才有删除入口（对齐参考项目 f-cat：右上角红色胶囊按钮）
+          actions: _isEdit
+              ? [
+                  TNavBarItem(
+                    customWidget: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF0F0),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Text('删除',
+                          style: TextStyle(
+                              fontSize: 13, color: Color(0xFFFF4D4F))),
+                    ),
+                    onTap: _showDeleteDialog,
+                  ),
+                ]
+              : null,
         ),
         body: ListView(
           padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),

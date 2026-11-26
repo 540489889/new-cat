@@ -1,6 +1,7 @@
 import 'package:provider/provider.dart';
 import 'package:tdesign_flutter/tdesign_flutter.dart';
 
+import 'core/family/family_state.dart';
 import 'core/pet/pet_state.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
@@ -38,6 +39,8 @@ class _AppState extends State<App> {
       child: MultiProvider(
         providers: [
           ChangeNotifierProvider<PetState>(create: (_) => PetState()),
+          // 家庭（家庭成员）状态：家庭详情 + 成员列表，供「我的」页与家庭页共享
+          ChangeNotifierProvider<FamilyState>(create: (_) => FamilyState()),
           // 用户信息全局状态：登录后自动从本地缓存恢复，供个人中心/资料页展示
           ChangeNotifierProvider<UserState>(
             create: (_) => UserState()..checkLoginStatus(),

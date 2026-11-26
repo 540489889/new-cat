@@ -180,6 +180,9 @@ class _HeroVideoState extends State<_HeroVideo> with WidgetsBindingObserver {
   VideoController? _controller;
   bool _ready = false;
   String? _openedUrl;
+
+  /// 切换宠物序号：用于丢弃上一个宠物遗留的异步回调（open / 取色）。
+  int _openSeq = 0;
   PetState? _petState;
   // 视频真实宽高比：用于按满宽计算高度，使整段视频完整展示（不裁切）。
   // 未取到时回落 16:9。
@@ -219,7 +222,11 @@ class _HeroVideoState extends State<_HeroVideo> with WidgetsBindingObserver {
     _player!.stream.width.listen((w) {
       debugPrint('[HeroVideo] width=$w');
       _updateAspect();
-      if (w != null && w > 0 && mounted && !_ready) {
+      // 只接受「当前已打开的视频 == 当前选中宠物视频」的首帧，
+      // 避免切换宠物过程中旧视频的宽高事件提前把旧画面淡入。
+      final url = _petState?.mediaUrl;
+      final matches = _openedUrl != null && _openedUrl == url;
+      if (w != null && w > 0 && mounted && !_ready && matches) {
         setState(() => _ready = true);
         debugPrint('[HeroVideo] ready=true');
         _extractColor();
@@ -268,12 +275,14 @@ class _HeroVideoState extends State<_HeroVideo> with WidgetsBindingObserver {
   /// 抓取当前视频帧，取底部区域平均色作为「视频底色」回调给外层。
   Future<void> _extractColor() async {
     if (_player == null || !mounted) return;
+    final seq = _openSeq;
     try {
       // 略等一帧，确保画面已渲染
       await Future.delayed(const Duration(milliseconds: 200));
-      if (!mounted) return;
+      // 期间已切换宠物：丢弃旧宠物的取色结果
+      if (!mounted || seq != _openSeq) return;
       final bytes = await _player!.screenshot();
-      if (bytes == null || !mounted) return;
+      if (bytes == null || !mounted || seq != _openSeq) return;
       final codec = await ui.instantiateImageCodec(bytes);
       final frame = await codec.getNextFrame();
       final image = frame.image;
@@ -291,7 +300,7 @@ class _HeroVideoState extends State<_HeroVideo> with WidgetsBindingObserver {
   }
 
   /// 从封面网络图取底部平均色，作为视频就绪前的页面底色（避免首屏白闪）。
-  Future<void> _extractColorFromImage(String url) async {
+  Future<void> _extractColorFromImage(String url, int seq) async {
     try {
       final provider = NetworkImage(url);
       final completer = Completer<ui.Image>();
@@ -309,9 +318,9 @@ class _HeroVideoState extends State<_HeroVideo> with WidgetsBindingObserver {
       );
       stream.addListener(listener);
       final img = await completer.future;
-      if (!mounted) return;
+      if (!mounted || seq != _openSeq) return;
       final data = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
-      if (data == null || !mounted) return;
+      if (data == null || !mounted || seq != _openSeq) return;
       final color = _averageBottom(
         data.buffer.asUint32List(),
         img.width,
@@ -328,24 +337,28 @@ class _HeroVideoState extends State<_HeroVideo> with WidgetsBindingObserver {
     if (!mounted || _player == null || _petState == null) return;
     final url = _petState!.mediaUrl;
     final cover = _petState!.coverUrl;
+    final seq = ++_openSeq;
     // 先用封面图取底色：首屏 / 视频未就绪时即已有底色，避免白闪
-    if (cover != null && cover.isNotEmpty) _extractColorFromImage(cover);
+    if (cover != null && cover.isNotEmpty) _extractColorFromImage(cover, seq);
     debugPrint('[HeroVideo] onPetChanged mediaUrl=$url');
     // 当前宠物无视频：停掉播放、回退封面
     if (url == null || url.isEmpty) {
-      if (_openedUrl != null) {
-        _openedUrl = null;
-        _player!.pause();
-        if (mounted) setState(() => _ready = false);
-      }
+      _openedUrl = null;
+      _player!.pause();
+      // 必须退回封面，否则切换后顶部仍停着上一个宠物的画面
+      if (_ready) setState(() => _ready = false);
       return;
     }
     if (_openedUrl != url) {
       _openedUrl = url;
+      // 切换瞬间先回退封面，等新视频首帧就绪再淡入，避免新旧画面串台
+      if (_ready) setState(() => _ready = false);
       // 不重置比例：盒子高度始终沿用视频高度，图片态也保持同一高度，避免跳动。
       _player!
           .open(Media(url))
           .then((_) {
+            // 已被后续切换覆盖：丢弃本次 open 结果
+            if (seq != _openSeq || !mounted) return;
             debugPrint('[HeroVideo] open ok, play');
             _updateAspect();
             _extractColor();
@@ -354,7 +367,7 @@ class _HeroVideoState extends State<_HeroVideo> with WidgetsBindingObserver {
           .catchError((e) {
             // 播放失败：退回封面图
             debugPrint('[HeroVideo] open error: $e');
-            if (mounted) setState(() => _ready = false);
+            if (seq == _openSeq && mounted) setState(() => _ready = false);
           });
     }
   }
@@ -518,8 +531,11 @@ class _PetSwitchBar extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     ConstrainedBox(
+                      // 首帧/分屏时宽度可能小于 120，直接相减会得到负约束并触发
+                      // BoxConstraints 断言，这里兜底到最小 80
                       constraints: BoxConstraints(
-                        maxWidth: MediaQuery.of(context).size.width - 120,
+                        maxWidth: (MediaQuery.sizeOf(context).width - 120)
+                            .clamp(80.0, double.infinity),
                       ),
                       child: Text(
                         name,
@@ -660,9 +676,8 @@ class _AiDailyHeader extends StatelessWidget {
     return Container(
       height: height,
       padding: const EdgeInsets.symmetric(horizontal: 14),
-      // 顶部圆角：首屏与摘要卡拼成完整卡片；吸顶时圆角上沿会被背景板遮住
+      // 无圆角：标题背景保持直角
       decoration: const BoxDecoration(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
         gradient: LinearGradient(
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
@@ -715,7 +730,8 @@ class _AiDailySummary extends StatelessWidget {
         ],
       ),
       child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+            // 顶部留白：标题条已改为直角背景，内容需与标题拉开距离
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

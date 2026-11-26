@@ -49,10 +49,11 @@ class _HealthPageState extends State<HealthPage> {
   void initState() {
     super.initState();
     _scrollController.addListener(() {
-      final t = (_scrollController.offset /
-              (_AvatarFoldDelegate.expandedExtent -
-                  _AvatarFoldDelegate.collapsedExtent))
-          .clamp(0.0, 1.0);
+      final t =
+          (_scrollController.offset /
+                  (_AvatarFoldDelegate.expandedExtent -
+                      _AvatarFoldDelegate.collapsedExtent))
+              .clamp(0.0, 1.0);
       if ((_fold.value - t).abs() > 0.01) _fold.value = t;
     });
   }
@@ -74,48 +75,48 @@ class _HealthPageState extends State<HealthPage> {
     return Scaffold(
       backgroundColor: HealthPage._bg,
       body: Stack(
-      children: [
-        // 标题栏（状态栏 + 标题）固定在顶部，不随滚动
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: _TitleBar(topInset: topInset, fold: _fold),
-        ),
-        // 滚动内容盒子：从标题栏下方开始。
-        // 头像板块作为折叠头 pinned 在此盒子顶部：上滑收起为迷你栏，
-        // 下滑展开为大头像轮播，始终保留宠物切换入口。
-        Positioned(
-          top: topInset + HealthPage._titleBarHeight,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: CustomScrollView(
-            controller: _scrollController,
-            slivers: [
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: const _AvatarFoldDelegate(),
-              ),
-              SliverPadding(
-                // 顶部留 12：背景图底部的白色弧线与第一张白卡之间留出缝，
-                // 否则两张白色直接相接，会显得卡片压在背景图上
-                padding: EdgeInsets.only(top: 12, bottom: bottomPad),
-                sliver: SliverList(
-                  delegate: SliverChildListDelegate([
-                    // 注意：这里刻意不用 const —— const 无参实例在热重载时会被
-                    // 判定为 identical 而跳过整个子树重建，导致改动不生效
-                    _WeeklyCard(),
-                    _EntryGrid(),
-                    const _TodayCard(),
-                    const _AbnormalCard(),
-                    const _CareCard(),
-                  ]),
-                ),
-              ),
-            ],
+        children: [
+          // 标题栏（状态栏 + 标题）固定在顶部，不随滚动
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _TitleBar(topInset: topInset, fold: _fold),
           ),
-        ),
+          // 滚动内容盒子：从标题栏下方开始。
+          // 头像板块作为折叠头 pinned 在此盒子顶部：上滑收起为迷你栏，
+          // 下滑展开为大头像轮播，始终保留宠物切换入口。
+          Positioned(
+            top: topInset + HealthPage._titleBarHeight,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: CustomScrollView(
+              controller: _scrollController,
+              slivers: [
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: const _AvatarFoldDelegate(),
+                ),
+                SliverPadding(
+                  // 顶部留 12：背景图底部的白色弧线与第一张白卡之间留出缝，
+                  // 否则两张白色直接相接，会显得卡片压在背景图上
+                  padding: EdgeInsets.only(top: 12, bottom: bottomPad),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      // 注意：这里刻意不用 const —— const 无参实例在热重载时会被
+                      // 判定为 identical 而跳过整个子树重建，导致改动不生效
+                      _WeeklyCard(),
+                      _EntryGrid(),
+                      const _TodayCard(),
+                      const _AbnormalCard(),
+                      const _CareCard(),
+                    ]),
+                  ),
+                ),
+              ],
+            ),
+          ),
           // 底部 AI 问答浮条：紧贴胶囊 TabBar 上方。
           // 注意 padding.bottom 已含 TabBar 高度（extendBody 注入），
           // 勿再加大偏移，否则浮条会悬到卡片中间形成阴影块
@@ -171,68 +172,79 @@ class _TitleBar extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const Text('健康',
-                    style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white)),
-                // 收起时右侧淡入当前宠物头像（可点击切换），不额外占一行
-                ValueListenableBuilder<double>(
-                  valueListenable: fold,
-                  builder: (context, t, _) {
-                    final petState = context.watch<PetState>();
-                    final selected = petState.selectedPet;
-                    return Expanded(
-                      child: Opacity(
-                        opacity: t,
-                        child: IgnorePointer(
-                          ignoring: t < 0.4,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () {
-                              final pets = petState.pets;
-                              if (pets.isEmpty) return;
-                              petState.selectPet(
-                                  (petState.selectedIndex + 1) % pets.length);
-                            },
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                _PetAvatar(
-                                    head: selected?.headimg ?? '',
-                                    ringed: true,
-                                    size: 28),
-                                const SizedBox(width: 6),
-                                ConstrainedBox(
-                                  constraints:
-                                      const BoxConstraints(maxWidth: 80),
-                                  child: Text(
-                                    selected?.nickname ?? '我的宠物',
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.white),
-                                  ),
-                                ),
-                                const Icon(Icons.chevron_right,
-                                    size: 16, color: Colors.white),
-                              ],
-                            ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const Text(
+                          '健康',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
                           ),
                         ),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
+                        // 收起时右侧淡入当前宠物头像（可点击切换），不额外占一行
+                        ValueListenableBuilder<double>(
+                          valueListenable: fold,
+                          builder: (context, t, _) {
+                            final petState = context.watch<PetState>();
+                            final selected = petState.selectedPet;
+                            return Expanded(
+                              child: Opacity(
+                                opacity: t,
+                                child: IgnorePointer(
+                                  ignoring: t < 0.4,
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () {
+                                      final pets = petState.pets;
+                                      if (pets.isEmpty) return;
+                                      petState.selectPet(
+                                        (petState.selectedIndex + 1) %
+                                            pets.length,
+                                      );
+                                    },
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        _PetAvatar(
+                                          head: selected?.headimg ?? '',
+                                          ringed: true,
+                                          size: 28,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        ConstrainedBox(
+                                          constraints: const BoxConstraints(
+                                            maxWidth: 80,
+                                          ),
+                                          child: Text(
+                                            selected?.nickname ?? '我的宠物',
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                        const Icon(
+                                          Icons.chevron_right,
+                                          size: 16,
+                                          color: Colors.white,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -261,9 +273,14 @@ class _AvatarFoldDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   Widget build(
-      BuildContext context, double shrinkOffset, bool overlapsContent) {
-    final t = (shrinkOffset / (expandedExtent - collapsedExtent))
-        .clamp(0.0, 1.0);
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    final t = (shrinkOffset / (expandedExtent - collapsedExtent)).clamp(
+      0.0,
+      1.0,
+    );
     // 折叠头坐标原点在「状态栏 + 标题栏」下沿，而背景图是从屏幕顶部铺的，
     // 这里补回偏移让它与顶层那张严格重合。
     // 直接读 MediaQuery，不经 delegate 字段——避免热重载时旧实例字段为 null
@@ -343,9 +360,10 @@ class _PetAvatar extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      // 白色圆底 + 少量内间距：靠留白形成一圈细腻的白边，
-      // 不再用粉色描边（当前头像留 4，两侧探出的头像留 2）
-      padding: EdgeInsets.all(ringed ? 4 : 2),
+      // 白色圆底 + 固定内间距形成白边。
+      // 注意不要把间距随 ringed 变化（原来 4 / 2）——轮播切换时 ringed 在
+      // diff=0.5 处翻转，内间距突变会让头像看起来「跳一下」
+      padding: const EdgeInsets.all(4),
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
         color: Colors.white,
@@ -376,6 +394,7 @@ class _PetAvatarCarouselState extends State<_PetAvatarCarousel> {
   int _petCount = 0;
   PetState? _pet; // 缓存引用，dispose 时安全移除监听（避免卸载查祖先）
   bool _listenerAttached = false;
+  int? _animatingTo; // 正在进行的分页动画目标，用于去重（避免同一目标被反复重启）
 
   @override
   void didChangeDependencies() {
@@ -390,6 +409,7 @@ class _PetAvatarCarouselState extends State<_PetAvatarCarousel> {
     if (pets.length != _petCount) {
       // 宠物数量变化（首帧为空 -> 加载完成）时重建控制器并对齐当前选中项
       _petCount = pets.length;
+      _animatingTo = null;
       _pageCtrl?.dispose();
       _pageCtrl = PageController(
         viewportFraction: 0.28,
@@ -399,35 +419,32 @@ class _PetAvatarCarouselState extends State<_PetAvatarCarousel> {
       );
     } else if (_pageCtrl != null && pets.isNotEmpty) {
       // 选中项被外部改变时平滑跟随
-      final target = pet.selectedIndex.clamp(0, pets.length - 1);
-      if (_pageCtrl!.hasClients && (_pageCtrl!.page?.round() ?? -1) != target) {
-        _pageCtrl!.animateToPage(
-          target,
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOut,
-        );
-      }
+      _animateToPage(pet.selectedIndex.clamp(0, pets.length - 1));
     }
+  }
+
+  /// 统一的分页动画入口。
+  /// 同一目标正在进行时直接忽略——否则 selectPet 的通知、didChangeDependencies、
+  /// 接口回来后的 notify 都会各启动一次动画，视觉上就是「走到一半被拽回去重跑」。
+  void _animateToPage(int target) {
+    final ctrl = _pageCtrl;
+    if (ctrl == null || !ctrl.hasClients) return;
+    if ((ctrl.page?.round() ?? -1) == target) return;
+    if (_animatingTo == target) return;
+    _animatingTo = target;
+    ctrl
+        .animateToPage(
+          target,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+        )
+        .whenComplete(() => _animatingTo = null);
   }
 
   void _syncPage() {
     final pets = _pet?.pets ?? [];
     if (pets.isEmpty || _pageCtrl?.hasClients != true) return;
-    final target = (_pet?.selectedIndex ?? 0).clamp(0, pets.length - 1);
-    if ((_pageCtrl!.page?.round() ?? -1) != target) {
-      _pageCtrl!.animateToPage(
-        target,
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOut,
-      );
-    }
-  }
-
-  void _tapNext() {
-    final pets = _pet?.pets ?? [];
-    if (pets.isEmpty) return;
-    final cur = _pageCtrl?.page?.round() ?? _pet!.selectedIndex;
-    _pet?.selectPet((cur + 1) % pets.length);
+    _animateToPage((_pet?.selectedIndex ?? 0).clamp(0, pets.length - 1));
   }
 
   @override
@@ -450,41 +467,39 @@ class _PetAvatarCarouselState extends State<_PetAvatarCarousel> {
         ),
       );
     }
-    return GestureDetector(
-      onTap: _tapNext,
-      child: SizedBox(
-        height: 80,
-        child: PageView.builder(
-          controller: _pageCtrl,
-          itemCount: pets.length,
-          clipBehavior: Clip.none,
-          onPageChanged: (i) => _pet?.selectPet(i),
-          itemBuilder: (_, i) {
-            final head = pets[i].headimg;
-            return AnimatedBuilder(
-              animation: _pageCtrl!,
-              builder: (ctx, __) {
-                final page = _pageCtrl!.page ?? pet.selectedIndex.toDouble();
-                final diff = i - page;
-                final scale = (1 - diff.abs() * 0.42).clamp(0.55, 1.0);
-                final angle = diff * 0.12;
-                final ringed = diff.abs() < 0.5; // 仅当前头像带粉色描边
-                return Transform(
-                  alignment: Alignment.center,
-                  transform: Matrix4.identity()
-                    ..setEntry(3, 2, 0.0016)
-                    ..rotateY(angle),
-                  child: Transform.scale(
-                    scale: scale,
-                    child: Center(
-                      child: _PetAvatar(head: head, ringed: ringed, size: 56),
-                    ),
+    // 只支持左右滑动切换，点击头像不再跳到下一个
+    return SizedBox(
+      height: 80,
+      child: PageView.builder(
+        controller: _pageCtrl,
+        itemCount: pets.length,
+        clipBehavior: Clip.none,
+        onPageChanged: (i) => _pet?.selectPet(i),
+        itemBuilder: (_, i) {
+          final head = pets[i].headimg;
+          return AnimatedBuilder(
+            animation: _pageCtrl!,
+            builder: (ctx, __) {
+              final page = _pageCtrl!.page ?? pet.selectedIndex.toDouble();
+              final diff = i - page;
+              final scale = (1 - diff.abs() * 0.42).clamp(0.55, 1.0);
+              final angle = diff * 0.12;
+              final ringed = diff.abs() < 0.5; // 仅当前头像带粉色描边
+              return Transform(
+                alignment: Alignment.center,
+                transform: Matrix4.identity()
+                  ..setEntry(3, 2, 0.0016)
+                  ..rotateY(angle),
+                child: Transform.scale(
+                  scale: scale,
+                  child: Center(
+                    child: _PetAvatar(head: head, ringed: ringed, size: 56),
                   ),
-                );
-              },
-            );
-          },
-        ),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }

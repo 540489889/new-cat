@@ -1,6 +1,8 @@
 import 'package:tdesign_flutter/tdesign_flutter.dart';
 
 import '../../features/components/components_page.dart';
+import '../../features/family/family_edit_page.dart';
+import '../../features/family/family_page.dart';
 import '../../features/login/bind_mobile_page.dart';
 import '../../features/demo/demo_detail_page.dart';
 import '../../features/member/about_us_page.dart';
@@ -14,6 +16,7 @@ import '../../features/pet/pet_detail_page.dart';
 import '../../features/pet/pet_edit_page.dart';
 import '../../features/pet/pet_option_pages.dart';
 import '../../features/pet/pet_variety_page.dart';
+import '../../features/service/service_page.dart';
 import '../../features/settings/setting_prefs_page.dart';
 import '../../features/shop/address_page.dart';
 import '../../features/shop/goods_detail_page.dart';
@@ -23,6 +26,7 @@ import '../../features/shop/pay_success_page.dart';
 import '../../features/shop/shop_page.dart';
 import '../../shared/widgets/status_bar_style.dart';
 import '../auth/auth_gate.dart';
+import '../family/family_models.dart';
 import '../pet/pet_models.dart';
 import '../shop/shop_models.dart';
 
@@ -35,6 +39,8 @@ class AppRoutes {
   static const String demoDetail = '/demo/detail';
   static const String components = '/components';
   static const String petDetail = '/pet/detail';
+  static const String family = '/family';
+  static const String familyEdit = '/family/edit';
   static const String petAdd = '/pet/add';
   static const String petEdit = '/pet/edit';
   static const String petType = '/pet/select/type';
@@ -48,6 +54,7 @@ class AppRoutes {
   static const String aboutUs = '/member/about';
   static const String news = '/member/news';
   static const String feedback = '/member/feedback';
+  static const String service = '/member/service';
   static const String shop = '/shop';
   static const String shopGoodsDetail = '/shop/goods-detail';
   static const String shopOrderList = '/shop/orders';
@@ -93,6 +100,26 @@ class AppRouter {
       case AppRoutes.petDetail:
         return MaterialPageRoute(
           builder: (_) => const PetDetailPage(),
+          settings: settings,
+        );
+      case AppRoutes.family:
+        return MaterialPageRoute(
+          builder: (_) => const FamilyPage(),
+          settings: settings,
+        );
+      case AppRoutes.familyEdit:
+        // arguments: FamilyInfo（家庭名称 / 头像的编辑页）
+        final home = settings.arguments is FamilyInfo
+            ? settings.arguments! as FamilyInfo
+            : null;
+        if (home == null) {
+          return MaterialPageRoute(
+            builder: (_) => const _NotFoundPage(routeName: AppRoutes.familyEdit),
+            settings: settings,
+          );
+        }
+        return MaterialPageRoute<bool>(
+          builder: (_) => FamilyEditPage(home: home),
           settings: settings,
         );
       case AppRoutes.petAdd:
@@ -172,6 +199,11 @@ class AppRouter {
       case AppRoutes.news:
         return MaterialPageRoute(
           builder: (_) => const NewsPage(),
+          settings: settings,
+        );
+      case AppRoutes.service:
+        return MaterialPageRoute(
+          builder: (_) => const ServicePage(),
           settings: settings,
         );
       case AppRoutes.feedback:

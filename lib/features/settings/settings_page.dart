@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:tdesign_flutter/tdesign_flutter.dart';
 
+import '../../core/family/family_state.dart';
 import '../../core/router/app_router.dart';
 import '../../core/user/user_state.dart';
 
@@ -734,27 +735,60 @@ class _DeviceRow extends StatelessWidget {
   }
 }
 
-/// 家庭成员入口
-class _FamilyCard extends StatelessWidget {
+/// 家庭成员入口：展示当前家庭成员数，点击进入「我的家庭」页。
+class _FamilyCard extends StatefulWidget {
   const _FamilyCard();
 
   @override
+  State<_FamilyCard> createState() => _FamilyCardState();
+}
+
+class _FamilyCardState extends State<_FamilyCard> {
+  Future<void> _open() async {
+    await Navigator.of(context).pushNamed(AppRoutes.family);
+    // 从家庭页返回后强制同步一次，避免成员/家庭名变更后入口文案滞后
+    if (!mounted) return;
+    await context.read<FamilyState>().load(force: true);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return _Card(
-      child: Row(
-        children: [
-          const _IconBox(asset: 'assets/images/icon/m-d3.png'),
-          const SizedBox(width: 12),
-          const Text('家庭成员',
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: SettingsPage._ink)),
-          const Spacer(),
-          const Text('1 个关联账号',
-              style: TextStyle(fontSize: 11, color: SettingsPage._sub)),
-          const Icon(Icons.chevron_right, size: 16, color: SettingsPage._sub),
-        ],
+    final family = context.watch<FamilyState>();
+    // 按需加载：未加载且不在请求中时补一次（登录态变化后也会自动触发）
+    if (!family.loaded && !family.loading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.read<FamilyState>().load();
+      });
+    }
+    final String note;
+    if (!family.loaded) {
+      note = '';
+    } else if (family.hasFamily) {
+      note = '${family.memberCount} 位成员';
+    } else {
+      note = '未加入';
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _open,
+      child: _Card(
+        child: Row(
+          children: [
+            const _IconBox(asset: 'assets/images/icon/m-d3.png'),
+            const SizedBox(width: 12),
+            const Text('家庭成员',
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: SettingsPage._ink)),
+            const Spacer(),
+            Text(note,
+                style: const TextStyle(
+                    fontSize: 11, color: SettingsPage._sub)),
+            const Icon(Icons.chevron_right, size: 16, color: SettingsPage._sub),
+          ],
+        ),
       ),
     );
   }
@@ -805,12 +839,12 @@ class _GeneralList extends StatelessWidget {
           ),
         );
 
-    void comingSoon() => TToast.showText('功能即将开放', context: context);
-
     return _Card(
       child: Column(
         children: [
-          row(png('assets/images/icon/m-d1.png'), '客服', onTap: comingSoon),
+          row(png('assets/images/icon/m-d1.png'), '客服',
+              onTap: () =>
+                  Navigator.of(context).pushNamed(AppRoutes.service)),
           Container(height: 1, color: SettingsPage._divider),
           row(png('assets/images/icon/m-d6.png'), '投诉建议',
               onTap: () =>

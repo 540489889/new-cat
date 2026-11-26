@@ -8,7 +8,14 @@ import '../../core/router/app_router.dart';
 /// 顶部粉紫渐变标题栏（返回 / 居中标题 / 分享）→ 宠物信息卡（头像+名字+到家日期）
 /// → 宠物画像卡（性格标签）→ 基础资料卡（两列键值对）。
 /// 名字与头像取自当前选中宠物 [PetState]；画像与资料为本地 mock，接入后端后替换。
-class PetDetailPage extends StatelessWidget {
+///
+/// 动效：
+/// - 顶部渐变上两团柔光缓慢呼吸漂移；
+/// - 三张卡片依次淡入上移（[_Reveal]）；
+/// - 头像带呼吸光晕，滚动时轻微上浮（视差）；
+/// - 陪伴天数数字滚动递增；
+/// - 返回 / 分享 / 编辑按钮按压回弹。
+class PetDetailPage extends StatefulWidget {
   const PetDetailPage({super.key});
 
   // 设计稿色板（与宠物页/首页统一）
@@ -35,28 +42,116 @@ class PetDetailPage extends StatelessWidget {
   static const double _gradientHeightExtra = 300.0;
 
   @override
+  State<PetDetailPage> createState() => _PetDetailPageState();
+}
+
+class _PetDetailPageState extends State<PetDetailPage>
+    with SingleTickerProviderStateMixin {
+  final ScrollController _scroll = ScrollController();
+
+  /// 顶部柔光呼吸：驱动两团光斑缓慢上下漂移与明暗变化。
+  late final AnimationController _breath;
+
+  @override
+  void initState() {
+    super.initState();
+    _breath = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 4200),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    _breath.dispose();
+    super.dispose();
+  }
+
+  /// 顶部柔光层：右上粉光 + 左下暖白光，随 [_breath] 缓慢漂移。
+  Widget _glowLayer() {
+    return AnimatedBuilder(
+      animation: _breath,
+      builder: (context, _) {
+        final v = Curves.easeInOut.transform(_breath.value);
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Positioned(
+              top: -70 + 16 * v,
+              right: -80,
+              child: Container(
+                width: 280,
+                height: 280,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      const Color(0xFFFFD3E4)
+                          .withValues(alpha: 0.40 - 0.14 * v),
+                      const Color(0x00FFD3E4),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 130 - 12 * v,
+              left: -90,
+              child: Container(
+                width: 240,
+                height: 240,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      Colors.white.withValues(alpha: 0.18 - 0.08 * v),
+                      Colors.white.withValues(alpha: 0.0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).padding.top;
     final bottomInset = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: PetDetailPage._bg,
       body: Stack(
         children: [
-          // 顶部渐变背景层：标题栏与首张卡片都落在渐变上
+          // 顶部渐变背景层：标题栏与首张卡片都落在渐变上；叠加缓慢漂移的柔光
           Positioned(
             top: 0,
             left: 0,
             right: 0,
             height: topInset + PetDetailPage._gradientHeightExtra,
-            child: Container(
-              decoration:
-                  const BoxDecoration(gradient: PetDetailPage._topGradient),
+            child: ClipRect(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: const BoxDecoration(
+                        gradient: PetDetailPage._topGradient,
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(child: IgnorePointer(child: _glowLayer())),
+                ],
+              ),
             ),
           ),
-          // 滚动内容：三张白色卡片
+          // 滚动内容：三张白色卡片，依次淡入
           Positioned.fill(
             child: SingleChildScrollView(
+              controller: _scroll,
               padding: EdgeInsets.only(
                 left: 12,
                 right: 12,
@@ -64,13 +159,19 @@ class PetDetailPage extends StatelessWidget {
                 bottom: bottomInset + 24,
               ),
               child: Column(
-                children: const [
+                children: [
                   // 刻意不用 const：保证热重载时子树正常重建
-                  _ProfileCard(),
-                  SizedBox(height: 12),
-                  _PortraitCard(),
-                  SizedBox(height: 12),
-                  _BaseInfoCard(),
+                  _Reveal(child: _ProfileCard(scroll: _scroll)),
+                  const SizedBox(height: 12),
+                  _Reveal(
+                    delay: const Duration(milliseconds: 90),
+                    child: const _PortraitCard(),
+                  ),
+                  const SizedBox(height: 12),
+                  _Reveal(
+                    delay: const Duration(milliseconds: 180),
+                    child: const _BaseInfoCard(),
+                  ),
                 ],
               ),
             ),
@@ -114,7 +215,7 @@ class _Header extends StatelessWidget {
       child: Row(
         children: [
           // 返回：白色圆形按钮
-          GestureDetector(
+          _Pressable(
             onTap: () => Navigator.of(context).maybePop(),
             child: Container(
               width: 36,
@@ -138,7 +239,7 @@ class _Header extends StatelessWidget {
             ),
           ),
           // 分享：白色胶囊按钮
-          GestureDetector(
+          _Pressable(
             onTap: () {}, // TODO: 分享
             child: Container(
               height: 36,
@@ -152,8 +253,8 @@ class _Header extends StatelessWidget {
                 children: [
                   Image.asset('assets/images/icon/share-ico.png',
                       width: 15, height: 15),
-                  SizedBox(width: 5),
-                  Text('分享',
+                  const SizedBox(width: 5),
+                  const Text('分享',
                       style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -170,13 +271,89 @@ class _Header extends StatelessWidget {
 
 /// 宠物信息卡：与宠物页档案卡同款（粉圈头像 + 名字 + 陪伴天数 + 属性行），
 /// 去除了轮播，仅静态展示当前选中宠物；保留同心圆装饰（左上 / 右下，同宠物页）。
-class _ProfileCard extends StatelessWidget {
-  const _ProfileCard();
+/// 这里额外加了头像呼吸光晕、虚线环微摆、滚动视差与天数数字滚动。
+class _ProfileCard extends StatefulWidget {
+  /// 页面滚动控制器：用于头像轻微上浮的视差效果。
+  final ScrollController scroll;
+  const _ProfileCard({required this.scroll});
 
+  @override
+  State<_ProfileCard> createState() => _ProfileCardState();
+}
+
+class _ProfileCardState extends State<_ProfileCard>
+    with SingleTickerProviderStateMixin {
   // 与宠物页档案卡同款配色
   static const Color _ring = Color(0xFFC48FA5); // 大头像描边
   static const Color _statIcon = Color(0xFFB98CA0); // 属性图标
   static const Color _statText = Color(0xFF5C4A50); // 属性文字
+
+  /// 头像光晕呼吸 + 虚线环微摆（双向循环，成本低、只重绘头像区域）。
+  late final AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2600),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  ImageProvider _avatarImg(String h) => h.isNotEmpty
+      ? NetworkImage(h)
+      : const AssetImage('assets/images/group-1.png');
+
+  /// 大头像：呼吸光晕 + 粉色描边圆。
+  Widget _avatarBlock(String head) {
+    return SizedBox(
+      width: 116,
+      height: 116,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // 呼吸光晕
+          AnimatedBuilder(
+            animation: _pulse,
+            builder: (context, _) {
+              final v = Curves.easeInOut.transform(_pulse.value);
+              return Container(
+                width: 96 + 14 * v,
+                height: 96 + 14 * v,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      const Color(0xFFF2D6E2).withValues(alpha: 0.55 - 0.3 * v),
+                      const Color(0x00F2D6E2),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          // 头像本体
+          Container(
+            width: 80,
+            height: 80,
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: _ring, width: 2),
+              color: Colors.white,
+            ),
+            child: CircleAvatar(backgroundImage: _avatarImg(head)),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -184,33 +361,6 @@ class _ProfileCard extends StatelessWidget {
     final name =
         (pet?.nickname.isNotEmpty == true) ? pet!.nickname : '超级神虎';
     final head = pet?.headimg ?? '';
-
-    ImageProvider avatarImg(String h) => h.isNotEmpty
-        ? NetworkImage(h)
-        : const AssetImage('assets/images/group-1.png');
-
-    // 静态大头像（带粉色描边）+ 右下角相机角标（carme-ico.png，更换头像入口）
-    Widget bigAvatar(String h) => Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              padding: const EdgeInsets.all(5),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: _ring, width: 2),
-              ),
-              child: CircleAvatar(backgroundImage: avatarImg(h)),
-            ),
-            Positioned(
-              right: -2,
-              bottom: -2,
-              child: Image.asset('assets/images/icon/carme-ico.png',
-                  width: 26, height: 26),
-            ),
-          ],
-        );
 
     // 属性行：品种/性别/年龄/绝育/体重（mock，与宠物页一致）
     const stats = [
@@ -226,6 +376,13 @@ class _ProfileCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF8E6B84).withValues(alpha: 0.10),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(
@@ -237,8 +394,19 @@ class _ProfileCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 20),
             child: Column(
               children: [
-                bigAvatar(head),
-                const SizedBox(height: 8),
+                // 头像视差：向上滚动时轻微上浮，制造层次
+                AnimatedBuilder(
+                  animation: widget.scroll,
+                  builder: (context, child) {
+                    final offset =
+                        widget.scroll.hasClients ? widget.scroll.offset : 0.0;
+                    final dy = -(offset * 0.06).clamp(-8.0, 0.0);
+                    return Transform.translate(
+                        offset: Offset(0, dy), child: child);
+                  },
+                  child: _avatarBlock(head),
+                ),
+                const SizedBox(height: 6),
                 // 名字（详情页不切换宠物，无右箭头）
                 Text(name,
                     overflow: TextOverflow.ellipsis,
@@ -247,35 +415,45 @@ class _ProfileCard extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         color: PetDetailPage._ink)),
                 const SizedBox(height: 4),
-                Text('和$name的第108天',
-                    style: const TextStyle(
-                        fontSize: 13, color: PetDetailPage._sub)),
+                // 陪伴天数：数字从 0 滚动到目标值
+                TweenAnimationBuilder<int>(
+                  tween: IntTween(begin: 0, end: 108),
+                  duration: const Duration(milliseconds: 1400),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, days, _) => Text('和$name的第$days天',
+                      style: const TextStyle(
+                          fontSize: 13, color: PetDetailPage._sub)),
+                ),
                 const SizedBox(height: 16),
                 // 属性行：品种/性别/年龄/绝育/体重，均匀分布
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    children: [
-                      for (int i = 0; i < stats.length; i++) ...[
-                        if (i > 0) const Spacer(),
-                        Flexible(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(stats[i].$1, size: 15, color: _statIcon),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(stats[i].$2,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        fontSize: 14, color: _statText)),
-                              ),
-                            ],
+                _Reveal(
+                  delay: const Duration(milliseconds: 160),
+                  dy: 0.12,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      children: [
+                        for (int i = 0; i < stats.length; i++) ...[
+                          if (i > 0) const Spacer(),
+                          Flexible(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(stats[i].$1, size: 15, color: _statIcon),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(stats[i].$2,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontSize: 14, color: _statText)),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ],
@@ -365,6 +543,13 @@ class _PortraitCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF8E6B84).withValues(alpha: 0.07),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -390,9 +575,21 @@ class _PortraitCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(child: _PersonaTile(data: _personas[0])),
+                Expanded(
+                  child: _Reveal(
+                    delay: const Duration(milliseconds: 40),
+                    dy: 0.08,
+                    child: _PersonaTile(data: _personas[0]),
+                  ),
+                ),
                 const SizedBox(width: 10),
-                Expanded(child: _PersonaTile(data: _personas[1])),
+                Expanded(
+                  child: _Reveal(
+                    delay: const Duration(milliseconds: 120),
+                    dy: 0.08,
+                    child: _PersonaTile(data: _personas[1]),
+                  ),
+                ),
               ],
             ),
           ),
@@ -401,15 +598,31 @@ class _PortraitCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(child: _PersonaTile(data: _personas[2])),
+                Expanded(
+                  child: _Reveal(
+                    delay: const Duration(milliseconds: 200),
+                    dy: 0.08,
+                    child: _PersonaTile(data: _personas[2]),
+                  ),
+                ),
                 const SizedBox(width: 10),
-                Expanded(child: _PersonaTile(data: _personas[3])),
+                Expanded(
+                  child: _Reveal(
+                    delay: const Duration(milliseconds: 280),
+                    dy: 0.08,
+                    child: _PersonaTile(data: _personas[3]),
+                  ),
+                ),
               ],
             ),
           ),
           const SizedBox(height: 10),
           // 通栏标签
-          _PersonaTile(data: _personas[4]),
+          _Reveal(
+            delay: const Duration(milliseconds: 360),
+            dy: 0.08,
+            child: _PersonaTile(data: _personas[4]),
+          ),
         ],
       ),
     );
@@ -451,9 +664,16 @@ class _PersonaTile extends StatelessWidget {
           Container(
             width: 30,
             height: 30,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: data.color.withValues(alpha: 0.16),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
             alignment: Alignment.center,
             child: Icon(data.icon, size: 16, color: data.color),
@@ -501,6 +721,13 @@ class _BaseInfoCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF8E6B84).withValues(alpha: 0.07),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -514,19 +741,19 @@ class _BaseInfoCard extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                       color: PetDetailPage._ink)),
               const Spacer(),
-              GestureDetector(
+              _Pressable(
                 onTap: () async {
-                  final pet = context.read<PetState>().selectedPet;
+                  final petState = context.read<PetState>();
+                  final pet = petState.selectedPet;
                   if (pet == null) return;
                   final changed = await Navigator.of(context).pushNamed<bool>(
                     AppRoutes.petEdit,
                     arguments: pet,
                   );
                   if (changed == true) {
-                    await context.read<PetState>().refresh();
+                    await petState.refresh();
                   }
                 },
-                behavior: HitTestBehavior.opaque,
                 child: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
@@ -545,17 +772,21 @@ class _BaseInfoCard extends StatelessWidget {
           // 两列键值对
           for (int i = 0; i < _rows.length; i++) ...[
             if (i > 0) const SizedBox(height: 16),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (int j = 0; j < _rows[i].length; j++) ...[
-                  if (j > 0) const SizedBox(width: 16),
-                  Expanded(
-                    child: _InfoItem(
-                        label: _rows[i][j].$1, value: _rows[i][j].$2),
-                  ),
+            _Reveal(
+              delay: Duration(milliseconds: 60 * i),
+              dy: 0.16,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (int j = 0; j < _rows[i].length; j++) ...[
+                    if (j > 0) const SizedBox(width: 16),
+                    Expanded(
+                      child: _InfoItem(
+                          label: _rows[i][j].$1, value: _rows[i][j].$2),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ],
         ],
@@ -587,6 +818,93 @@ class _InfoItem extends StatelessWidget {
                   color: PetDetailPage._ink)),
         ),
       ],
+    );
+  }
+}
+
+/// 入场揭示：淡入 + 轻微上移，可设置延迟做依次出现的节奏。
+class _Reveal extends StatefulWidget {
+  const _Reveal({
+    required this.child,
+    this.delay = Duration.zero,
+    this.dy = 0.05,
+  });
+
+  final Widget child;
+
+  /// 出现延迟，用于交错（stagger）节奏。
+  final Duration delay;
+
+  /// 初始下移量（相对自身高度的比例）。
+  final double dy;
+
+  @override
+  State<_Reveal> createState() => _RevealState();
+}
+
+class _RevealState extends State<_Reveal> {
+  bool _on = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 首帧后再置位，保证隐式动画有初值可比对
+    Future<void>.delayed(widget.delay, () {
+      if (mounted) setState(() => _on = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedOpacity(
+      opacity: _on ? 1.0 : 0.0,
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOut,
+      child: AnimatedSlide(
+        offset: _on ? Offset.zero : Offset(0, widget.dy),
+        duration: const Duration(milliseconds: 520),
+        curve: Curves.easeOutCubic,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// 按压缩放反馈：按下轻微缩小，松开回弹。
+class _Pressable extends StatefulWidget {
+  const _Pressable({
+    required this.child,
+    this.onTap,
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+
+  @override
+  State<_Pressable> createState() => _PressableState();
+}
+
+class _PressableState extends State<_Pressable> {
+  bool _down = false;
+
+  void _set(bool v) {
+    if (_down != v) setState(() => _down = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _set(true),
+      onTapUp: (_) => _set(false),
+      onTapCancel: () => _set(false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _down ? 0.94 : 1.0,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOut,
+        child: widget.child,
+      ),
     );
   }
 }
