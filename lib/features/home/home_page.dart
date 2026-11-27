@@ -137,9 +137,34 @@ class _HomePageState extends State<HomePage>
         backgroundColor: _bgColor,
         body: Stack(
           children: [
-            // 滚动内容（底层）：首项是头图占位，内容面板紧随其后。
-            // 头图每展开一点，整块内容就被挤下去同样的距离（见 _HeroPushDown），
-            // 让面板跟着头图底边一起下移，而不是被撑大的头图遮住。
+            // 头图（最底层，钉在顶部不动）：内容滚上来会从下方压过它；
+            // 下拉时画面从顶部撑满整屏，越过阈值后锁定全屏（松手不回弹）
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: heroH,
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: Listenable.merge([_scrollCtrl, _lockCtrl]),
+                  child: _HeroVideo(
+                    // 头图比可视区更大，给下拉放大留出余量
+                    height: heroH * _kHeroOverscan,
+                    bgColor: _bgColor,
+                    onColorExtracted: (c) => setState(() => _bgColor = c),
+                  ),
+                  builder: (context, child) => _HeroParallax(
+                    progress: _heroProgress,
+                    height: heroH,
+                    fullHeight: screenH,
+                    child: child!,
+                  ),
+                ),
+              ),
+            ),
+            // 滚动内容（上层）：首项是头图占位，内容面板紧随其后。
+            // 滚动时整块内容上移、压过固定的头图；下拉展开时整块内容被
+            // 挤下去同样的距离（见 _HeroPushDown），始终贴着画面底边。
             Positioned.fill(
               child: _HeroPushDown(
                 scroll: _scrollCtrl,
@@ -151,16 +176,15 @@ class _HomePageState extends State<HomePage>
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
                   slivers: [
-                    // 头图在顶层绘制，这里只撑出它的高度：
-                    // 面板顶边与画面底边严格对齐，不留叠压（否则下拉/回弹时
-                    // 会被撑大的头图压住一条）。
+                    // 头图在底层绘制，这里只撑出它的高度：
+                    // 面板顶边与画面底边严格对齐，不留叠压。
                     // 首帧 MediaQuery 高度可能为 0，必须 clamp 掉负值
                     SliverToBoxAdapter(
                       child: SizedBox(
                         height: heroH.clamp(0.0, double.infinity),
                       ),
                     ),
-                    // 内容面板：圆角 + 底色，顶到最上面时盖住头图底部形成层次
+                    // 内容面板：圆角 + 底色，向上滚动时盖住固定头图形成层次
                     SliverToBoxAdapter(
                       child: Container(
                         decoration: BoxDecoration(
@@ -196,32 +220,6 @@ class _HomePageState extends State<HomePage>
                       ),
                     ),
                   ],
-                ),
-              ),
-            ),
-            // 头图（顶层）：随滚动上移被内容推走，下拉时由顶部撑满整屏，
-            // 使劲下拉越过阈值后锁定全屏（松手不回弹）
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: heroH,
-              child: IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: Listenable.merge([_scrollCtrl, _lockCtrl]),
-                  child: _HeroVideo(
-                    // 头图比可视区更大，给视差与下拉放大留出余量
-                    height: heroH * _kHeroOverscan,
-                    bgColor: _bgColor,
-                    onColorExtracted: (c) => setState(() => _bgColor = c),
-                  ),
-                  builder: (context, child) => _HeroParallax(
-                    offset: _scrollCtrl.hasClients ? _scrollCtrl.offset : 0.0,
-                    progress: _heroProgress,
-                    height: heroH,
-                    fullHeight: screenH,
-                    child: child!,
-                  ),
                 ),
               ),
             ),
@@ -382,23 +380,19 @@ class _HeroPushDown extends StatelessWidget {
   }
 }
 
-/// 头图视差层：随页面滚动让画面"慢半拍"上移；
-/// 下拉时头图钉在顶部，画面底边一路延伸到屏幕底部；
-/// 力度够大（越过 [expandDistance]）时由外层锁定，松手也不回弹。
+/// 头图层：画面钉在顶部不动（内容滚上来时从下方压过它）；
+/// 下拉时画面底边一路延伸到屏幕底部，力度够大（越过 [expandDistance]）
+/// 时由外层锁定全屏，松手也不回弹。
 ///
 /// 宽度说明：画面盒子恒定铺满屏宽，只按需要变高、底边对齐到目标高度，
 /// 所以下拉过程中横向始终是满的，不会出现左右留白。
 class _HeroParallax extends StatelessWidget {
   const _HeroParallax({
-    required this.offset,
     required this.progress,
     required this.height,
     required this.fullHeight,
     required this.child,
   });
-
-  /// 当前滚动偏移（< 0 表示下拉 overscroll）。
-  final double offset;
 
   /// 展开进度（0..1），由外层结合锁定状态给出，与内容下推共用同一份。
   final double progress;
@@ -412,10 +406,6 @@ class _HeroParallax extends StatelessWidget {
   /// 实际内容层（高度应为 `height * _kHeroOverscan`）。
   final Widget child;
 
-  /// 视差系数：滚动 1px 画面只上移 (1 - 系数)，
-  /// 位移上限（滚动到 height 时）为 0.12 * height，小于 0.125 * height 的余量。
-  static const double _factor = 0.12;
-
   /// 下拉多少像素后画面铺满整屏（"使劲下拉"的力度，也是锁定阈值）。
   static const double expandDistance = 170;
 
@@ -425,8 +415,6 @@ class _HeroParallax extends StatelessWidget {
     if (height <= 0 || fullHeight <= 0) return const SizedBox.shrink();
     final screenW = MediaQuery.sizeOf(context).width;
 
-    // 头图盒子随正常滚动 1:1 上移（下拉时钉在顶部不动）
-    final boxDy = offset > 0 ? -offset : 0.0;
     final expanded = progress > 0;
 
     final contentH = height * _kHeroOverscan;
@@ -438,30 +426,26 @@ class _HeroParallax extends StatelessWidget {
     // 出血只加在顶部与左右（底部要与内容面板严丝合缝地相接），
     // 让画面边缘落在屏幕外，避免贴边处露出背景色缝隙。
     final boxH = math.max(contentH, visibleH) + _kBleed * 2;
-    // 展开时把底边对齐到 visibleH（顶部靠 overscan 余量兜住）；
-    // 正常滚动时画面比页面慢半拍，形成视差
-    final dy = expanded ? visibleH - height : offset * _factor;
+    // 画面钉在顶部：正常滚动完全不位移，只有下拉展开时把底边推向屏幕底部
+    final dy = expanded ? visibleH - height : 0.0;
 
-    return Transform.translate(
-      offset: Offset(0, boxDy),
-      child: ClipRect(
-        // 展开时放开裁剪区（否则向屏幕底部撑开的画面会被裁掉），
-        // 其余时候裁到盒子内，避免画面盖住下方内容
-        clipper: _HeroClip(stretch: expanded),
-        child: SizedBox(
-          height: height,
-          width: double.infinity,
-          child: OverflowBox(
-            alignment: Alignment.bottomCenter,
-            minHeight: 0,
-            maxHeight: double.infinity,
-            child: Transform.translate(
-              offset: Offset(0, dy),
-              child: SizedBox(
-                height: boxH,
-                width: screenW + _kBleed * 2,
-                child: child,
-              ),
+    return ClipRect(
+      // 展开时放开裁剪区（否则向屏幕底部撑开的画面会被裁掉），
+      // 其余时候裁到盒子内，避免画面盖住下方内容
+      clipper: _HeroClip(stretch: expanded),
+      child: SizedBox(
+        height: height,
+        width: double.infinity,
+        child: OverflowBox(
+          alignment: Alignment.bottomCenter,
+          minHeight: 0,
+          maxHeight: double.infinity,
+          child: Transform.translate(
+            offset: Offset(0, dy),
+            child: SizedBox(
+              height: boxH,
+              width: screenW + _kBleed * 2,
+              child: child,
             ),
           ),
         ),
