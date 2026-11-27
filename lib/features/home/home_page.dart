@@ -291,6 +291,26 @@ class _HomePageState extends State<HomePage>
               bottom: bottomInset + 8,
               child: const _AiBar(),
             ),
+            // 视频全屏时，内容列表被推到屏幕外：把 AI 日报与最新一条 Agent 动态
+            // 压成一张小卡贴在视频上，点一下即退出全屏回看完整内容
+            Positioned(
+              left: 16,
+              right: 16,
+              // 问答条（48 高 + 8 底距）上方再留 12
+              bottom: bottomInset + 68,
+              child: IgnorePointer(
+                ignoring: !_heroLocked,
+                child: AnimatedOpacity(
+                  opacity: _heroLocked ? 1 : 0,
+                  duration: _kHeroLockDuration,
+                  curve: Curves.easeOut,
+                  child: _HeroInsightPanel(
+                    dateText: dailyDateText,
+                    onTap: _exitHeroFullscreen,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -881,6 +901,135 @@ class _GlassTopBar extends StatelessWidget {
   }
 }
 
+/// 视频全屏时贴在画面底部的小信息块：把 AI 日报摘要与最新一条 Agent 动态
+/// 压成一张玻璃卡，避免全屏时完全看不到当天数据；点整块退出全屏看完整内容。
+/// 文案与 [_AiDailySummary] / [_AgentDynamicCard] 里的 mock 保持一致。
+class _HeroInsightPanel extends StatelessWidget {
+  const _HeroInsightPanel({required this.dateText, required this.onTap});
+
+  final String dateText;
+  final VoidCallback onTap;
+
+  static const Color _title = Color(0xFF3D2E33);
+  static const Color _body = Color(0xFF5C4A50);
+  static const Color _sub = Color(0xFF9A8F93);
+  static const Color _warn = Color(0xFFD98A2B);
+  static const Color _brand = Color(0xFF7F6370);
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(16);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: radius,
+        child: BackdropFilter(
+          // 与底部问答条同一套玻璃，让视频画面透上来
+          filter: ui.ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.62),
+              borderRadius: radius,
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.55),
+                width: 0.8,
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // AI 日报：标题 + 日期 + 展开入口
+                Row(
+                  children: [
+                    const Icon(Icons.auto_awesome, size: 14, color: _brand),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'AI 日报',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: _title,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      dateText,
+                      style: const TextStyle(fontSize: 11, color: _sub),
+                    ),
+                    const Spacer(),
+                    const Text(
+                      '展开',
+                      style: TextStyle(fontSize: 11, color: _brand),
+                    ),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      size: 14,
+                      color: _brand,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  '昨日饮水180ml，进食62g，如厕3次。',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12.5, height: 1.25, color: _body),
+                ),
+                const SizedBox(height: 9),
+                Container(
+                  height: 0.8,
+                  color: Colors.white.withValues(alpha: 0.6),
+                ),
+                const SizedBox(height: 9),
+                // 最新一条 Agent 动态
+                Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                        color: _warn,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      '健康守护',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: _title,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      '10 分钟前',
+                      style: TextStyle(fontSize: 10.5, color: _sub),
+                    ),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        '检测到连续两次疑似呕吐',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
+                        style: TextStyle(fontSize: 11.5, color: _body),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 底部 AI 问答浮条：与底部 TabBar 共用同一套玻璃材质（模糊 + 淡白 + 细白边），
 /// 避免全屏视频时白卡片与玻璃导航之间出现断层；
 /// 麦克风/发送图标复用项目资源图（voice-ico.png / send-ico.png）。
@@ -888,7 +1037,9 @@ class _AiBar extends StatelessWidget {
   const _AiBar();
 
   static const Color _brand = Color(0xFF7F6370);
-  static const Color _sub = Color(0xFF9A8F93);
+
+  /// 占位文字：比原来的浅灰深两档，保证压在玻璃上、背后画面偏暗时依然读得清。
+  static const Color _placeholder = Color(0xFF6B5E63);
 
   /// 高度 48，圆角取一半，两端与 TabBar 同款胶囊。
   static const double _height = 48;
@@ -931,7 +1082,8 @@ class _AiBar extends StatelessWidget {
                 const Expanded(
                   child: Text(
                     '有什么问题都可以问我~',
-                    style: TextStyle(fontSize: 13, color: _sub),
+                    // 玻璃底会随背后的视频变暗，占位文字要比 _sub 更深才稳
+                    style: TextStyle(fontSize: 13, color: _placeholder),
                   ),
                 ),
                 Image.asset(
@@ -1023,9 +1175,10 @@ class _AiDailySummary extends StatelessWidget {
     const tags = ['饮食正常', '活动充足', '健康稳定'];
 
     return Container(
-      // 整块直角：与标题条、下方卡片都无缝拼接成一张
+      // 顶部直角与标题条拼成一张，底部保留圆角收口
       decoration: BoxDecoration(
         color: Colors.white,
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),

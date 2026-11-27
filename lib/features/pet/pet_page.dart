@@ -1174,7 +1174,8 @@ class _AiBar extends StatelessWidget {
           const Expanded(
             child: Text(
               '有什么问题都可以问我~',
-              style: TextStyle(fontSize: 13, color: PetPage._sub),
+              // 与首页保持一致：占位文字比 _sub 更深，避免看不清
+              style: TextStyle(fontSize: 13, color: Color(0xFF6B5E63)),
             ),
           ),
           Image.asset(
