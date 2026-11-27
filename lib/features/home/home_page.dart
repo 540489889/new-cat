@@ -240,6 +240,13 @@ class _HomePageState extends State<HomePage>
                   },
                 ),
               ),
+            // 全屏气泡问候：暂时停用（组件保留，取消注释即可恢复）
+            // if (_heroLocked)
+            //   Positioned.fill(
+            //     child: IgnorePointer(
+            //       child: _HeroChatBubble(topInset: topInset),
+            //     ),
+            //   ),
             // 顶部宠物切换条：首屏浮在头图上，向下滚动时淡出退场（交给内容）
             Positioned(
               top: 0,
@@ -894,6 +901,243 @@ class _GlassTopBar extends StatelessWidget {
             titleFontWeight: FontWeight.w600,
             bellSize: 20,
             bellColor: Color(0xFF2E2A2C),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 不规则气泡形状：四角半径各不相同，底部再挑一个小尾巴，
+/// 用来替代千篇一律的圆角矩形。
+class _BubbleShape {
+  const _BubbleShape._();
+
+  /// 尾巴凸出的高度。
+  static const double tail = 8;
+
+  static Path build(Size size, {required bool onLeft}) {
+    final w = size.width;
+    final bodyH = size.height - tail;
+    // 四角半径不等，避免机械感
+    const rtl = 22.0;
+    const rtr = 15.0;
+    const rbr = 19.0;
+    const rbl = 13.0;
+    // 尾巴靠气泡内侧，朝向画面中央的宠物
+    final tailX = onLeft ? w * 0.74 : w * 0.26;
+
+    return Path()
+      ..moveTo(rtl, 0)
+      ..lineTo(w - rtr, 0)
+      ..quadraticBezierTo(w, 0, w, rtr)
+      ..lineTo(w, bodyH - rbr)
+      ..quadraticBezierTo(w, bodyH, w - rbr, bodyH)
+      // 尾巴：先向内侧挑出一个尖，再收回来
+      ..lineTo(tailX + 9, bodyH)
+      ..quadraticBezierTo(tailX + 3, bodyH + tail - 1, tailX - 2, bodyH + tail)
+      ..quadraticBezierTo(tailX - 6, bodyH + tail - 2, tailX - 8, bodyH)
+      ..lineTo(rbl, bodyH)
+      ..quadraticBezierTo(0, bodyH, 0, bodyH - rbl)
+      ..lineTo(0, rtl)
+      ..quadraticBezierTo(0, 0, rtl, 0)
+      ..close();
+  }
+}
+
+class _BubbleClipper extends CustomClipper<Path> {
+  const _BubbleClipper({required this.onLeft});
+
+  final bool onLeft;
+
+  @override
+  Path getClip(Size size) => _BubbleShape.build(size, onLeft: onLeft);
+
+  @override
+  bool shouldReclip(covariant _BubbleClipper oldClipper) =>
+      oldClipper.onLeft != onLeft;
+}
+
+/// 给气泡描一道细白边：被裁剪后只留内侧一半，正好勾出玻璃边缘。
+class _BubbleStrokePainter extends CustomPainter {
+  const _BubbleStrokePainter({required this.onLeft});
+
+  final bool onLeft;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4
+      ..color = Colors.white.withValues(alpha: 0.65);
+    canvas.drawPath(_BubbleShape.build(size, onLeft: onLeft), paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _BubbleStrokePainter oldDelegate) =>
+      oldDelegate.onLeft != onLeft;
+}
+
+/// 视频全屏时的宠物气泡问候：隔几秒随机冒一句，弹出带轻微回弹，
+/// 停留约 3.4s 后淡出；只做展示，不拦截点击。
+class _HeroChatBubble extends StatefulWidget {
+  const _HeroChatBubble({required this.topInset});
+
+  final double topInset;
+
+  @override
+  State<_HeroChatBubble> createState() => _HeroChatBubbleState();
+}
+
+class _HeroChatBubbleState extends State<_HeroChatBubble>
+    with SingleTickerProviderStateMixin {
+  /// 宠物口吻的短句池，后续可换成 AI 生成的问候。
+  static const List<String> _lines = <String>[
+    '今天状态不错呀～',
+    '铲屎官，摸摸头嘛',
+    '刚喝完水，我很乖哦',
+    '陪我玩一会儿？',
+    '窗台上有只鸟，我盯了好久',
+    '困了就先睡，我守着你',
+    '今天的零食还没发呢',
+    '你出门的时候，我一直在门口等',
+    '记得喝水呀～',
+  ];
+
+  final math.Random _random = math.Random();
+
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 420),
+    reverseDuration: const Duration(milliseconds: 300),
+  );
+
+  Timer? _gapTimer;
+  Timer? _holdTimer;
+  String _text = '';
+  bool _onLeft = true;
+  double _jitter = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleNext(first: true);
+  }
+
+  @override
+  void dispose() {
+    _gapTimer?.cancel();
+    _holdTimer?.cancel();
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  /// 每隔 4.5~8.5s 冒一句，首次进全屏 0.9s 后就来。
+  void _scheduleNext({bool first = false}) {
+    _gapTimer?.cancel();
+    final waitMs = first ? 900 : 4500 + _random.nextInt(4000);
+    _gapTimer = Timer(Duration(milliseconds: waitMs), _speak);
+  }
+
+  void _speak() {
+    if (!mounted) return;
+    setState(() {
+      _text = _lines[_random.nextInt(_lines.length)];
+      // 左右交替出现，纵向再随机错开一点，避免每次都同一块位置
+      _onLeft = _random.nextBool();
+      _jitter = _random.nextInt(72).toDouble();
+    });
+    _ctrl.forward(from: 0);
+    _holdTimer?.cancel();
+    _holdTimer = Timer(const Duration(milliseconds: 3400), () {
+      if (!mounted) return;
+      _ctrl.reverse().whenComplete(() {
+        if (mounted) _scheduleNext();
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      // 避开顶部宠物条与画面中央的宠物脸，落在画面上部
+      padding: EdgeInsets.only(
+        top: widget.topInset + 92 + _jitter,
+        left: 20,
+        right: 20,
+      ),
+      child: Align(
+        alignment: Alignment(_onLeft ? -1.0 : 1.0, -1.0),
+        child: AnimatedBuilder(
+          animation: _ctrl,
+          builder: (context, _) {
+            final t = _ctrl.value.clamp(0.0, 1.0);
+            return Opacity(
+              opacity: t,
+              child: Transform.translate(
+                offset: Offset(0, (1 - t) * 10),
+                child: Transform.scale(
+                  // easeOutBack 让气泡冒出来时带一点弹性
+                  scale: 0.88 + 0.12 * Curves.easeOutBack.transform(t),
+                  alignment: _onLeft
+                      ? Alignment.bottomLeft
+                      : Alignment.bottomRight,
+                  child: _bubble(),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _bubble() {
+    return ClipPath(
+      // 不规则气泡：四角半径不等，底部那颗小尾巴指向宠物
+      clipper: _BubbleClipper(onLeft: _onLeft),
+      child: BackdropFilter(
+        // 与问答条/信息块同一套磨砂，视频画面能透上来
+        filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: CustomPaint(
+          foregroundPainter: _BubbleStrokePainter(onLeft: _onLeft),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 232),
+            padding: const EdgeInsets.fromLTRB(
+              14,
+              11,
+              14,
+              11 + _BubbleShape.tail,
+            ),
+            decoration: BoxDecoration(
+              // 上亮下柔的磨砂白，边缘自然过渡到透明玻璃
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withValues(alpha: 0.74),
+                  Colors.white.withValues(alpha: 0.52),
+                ],
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.pets, size: 13, color: Color(0xFFB2708A)),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    _text,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.32,
+                      color: Color(0xFF3D2E33),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
