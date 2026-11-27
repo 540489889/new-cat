@@ -26,45 +26,44 @@ class _HomePageState extends State<HomePage>
   /// 视频底色驱动的页面背景色；初始给一个暖灰底色，避免首屏白闪，
   /// 待封面/视频取色后更新为视频真实底色。
   Color? _bgColor = const Color(0xFFEFE9E6);
-  final ScrollController _scrollCtrl = ScrollController();
-
-  /// 头图是否已锁定为全屏：使劲下拉越过阈值后置位，松手回弹也不还原。
+  /// 头图是否已锁定为全屏：下拉越过阈值后置位，点画面或上滑退出。
   bool _heroLocked = false;
 
   /// 全屏锁定时累计的拖动位移：上滑超过阈值即退出（不依赖滑动速度）。
   double _heroLockDragDy = 0;
 
+  /// 内容区下拉累计量：超过 [_kHeroLockPull] 即进入全屏。
+  double _pullAccum = 0;
+
+  /// 顶部下拉的实时展开进度（0..1）：跟手把画面一起拉长，
+  /// 否则内容被拉下去时，画面底边与内容顶边之间会露出一截背景色。
+  final ValueNotifier<double> _pullT = ValueNotifier<double>(0.0);
+
+  /// 画面从正常高度展开到整屏的行程（屏高 − 头图高），
+  /// 用来把下拉的像素量换算成 [_pullT] 的进度。
+  double _heroExpandRange = 1;
+
   /// 头图展开的过渡动画（0 = 正常头图高度，1 = 铺满整屏）。
-  /// 锁定瞬间直接置 1（此刻下拉进度已是 1，无跳变），解锁时平滑收回。
+  /// 锁定后 forward、退出时回退，画面高度与内容下推都由它驱动。
   late final AnimationController _lockCtrl = AnimationController(
     vsync: this,
     duration: _kHeroLockDuration,
   );
 
-  /// 下拉超过该距离（负向 overscroll）：头图铺满整屏并锁定。
-  static const double _kHeroLockPull = _HeroParallax.expandDistance;
+  /// 画面展开的两个来源：下拉跟手（[_pullT]）与锁定动画（[_lockCtrl]）。
+  late final Listenable _heroAnim = Listenable.merge([_lockCtrl, _pullT]);
 
-  /// 锁定后向上滚过该距离：退出全屏，画面收回正常头图高度。
-  static const double _kHeroUnlockScroll = 8;
-
-  /// 毛玻璃吸顶条：滚过该距离开始淡入，再滚 [_kGlassBarFadeSpan] 完全显现。
-  static const double _kGlassBarShowAt = 130;
-  static const double _kGlassBarFadeSpan = 80;
+  /// 顶部下拉多少像素后进入全屏。
+  /// 回弹物理会吃掉一部分手指位移（拉出量明显小于手指行程），
+  /// 所以阈值给得比一屏的小幅下拉更宽松，正常「使劲拉一下」即可够到。
+  static const double _kHeroLockPull = 80;
 
   /// 锁定 / 解锁的过渡时长。
   static const Duration _kHeroLockDuration = Duration(milliseconds: 240);
 
-  /// 头图当前展开进度：0 = 正常头图高度，1 = 铺满整屏。
-  /// 头图高度与内容下推距离都由它驱动，两者始终同步。
-  double get _heroProgress {
-    final offset = _scrollCtrl.hasClients ? _scrollCtrl.offset : 0.0;
-    return _heroExpandProgress(offset, _lockCtrl.value);
-  }
-
   @override
   void initState() {
     super.initState();
-    _scrollCtrl.addListener(_onHeroScroll);
     // 登录后加载宠物列表与顶部展示视频
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -75,32 +74,67 @@ class _HomePageState extends State<HomePage>
 
   @override
   void dispose() {
-    _scrollCtrl.removeListener(_onHeroScroll);
-    _scrollCtrl.dispose();
     _lockCtrl.dispose();
+    _pullT.dispose();
     super.dispose();
   }
 
-  /// 根据滚动位置维护头图的全屏锁定状态：
-  /// 下拉够狠 → 锁定全屏；锁定后往上滚 → 退出全屏。
-  void _onHeroScroll() {
-    if (!_scrollCtrl.hasClients) return;
-    final offset = _scrollCtrl.offset;
-    if (!_heroLocked) {
-      if (offset <= -_kHeroLockPull) {
-        // 此刻下拉进度已到 1，直接同步锁定进度，避免跳变
-        _lockCtrl.value = 1;
-        setState(() => _heroLocked = true);
-      }
-    } else if (offset > _kHeroUnlockScroll) {
-      _exitHeroFullscreen();
+  /// 内容区下拉：在顶部继续往下拉够远，就进全屏。
+  ///
+  /// Bouncing 物理（iOS 风格回弹）不会发 OverscrollNotification，
+  /// 顶部下拉表现为 pixels 变成负值，所以这里两种都接：
+  /// 拖动中 pixels < minScrollExtent 时按拉出距离判定，
+  /// Clamping 物理则回退到 overscroll 累加。
+  bool _onContentScroll(ScrollNotification notification) {
+    if (_heroLocked) return false;
+    if (notification is ScrollStartNotification) {
+      _pullAccum = 0;
+      _pullT.value = 0;
+      return false;
     }
+    final metrics = notification.metrics;
+    // 已经不在顶部，下拉累计清零，避免中途误触
+    if (metrics.extentBefore > 0) {
+      _pullAccum = 0;
+      _pullT.value = 0;
+      return false;
+    }
+    if (notification is ScrollUpdateNotification) {
+      // 拉出量：回弹物理下 pixels 会变负；
+      // 松手回弹同样走这里，画面跟着内容一起收回去
+      final pull = math.max(0.0, metrics.minScrollExtent - metrics.pixels);
+      _pullT.value = math.min(1.0, pull / _heroExpandRange);
+      // dragDetails 非空 = 手指正在拖，只有拖动才计入锁定
+      if (notification.dragDetails != null && pull >= _kHeroLockPull) {
+        _enterHeroFullscreen();
+      }
+      return false;
+    }
+    if (notification is OverscrollNotification && notification.overscroll < 0) {
+      _pullAccum += -notification.overscroll;
+      _pullT.value = math.min(1.0, _pullAccum / _heroExpandRange);
+      if (_pullAccum >= _kHeroLockPull) {
+        _pullAccum = 0;
+        _enterHeroFullscreen();
+      }
+    }
+    return false;
+  }
+
+  /// 进入头图全屏：画面区向下猛拉、或内容区下拉够远时触发，
+  /// 锁定后松手也不回弹，直到点画面或上滑才退出。
+  void _enterHeroFullscreen() {
+    if (_heroLocked) return;
+    setState(() => _heroLocked = true);
+    _lockCtrl.forward();
   }
 
   /// 退出头图全屏：复位锁定标记，并让画面连同内容一起平滑收回原位。
   void _exitHeroFullscreen() {
     if (!_heroLocked) return;
     setState(() => _heroLocked = false);
+    // 锁定期间不接滚动通知，这里把跟手进度清零，收回时只由 _lockCtrl 驱动
+    _pullT.value = 0;
     _lockCtrl.animateBack(
       0,
       duration: _kHeroLockDuration,
@@ -118,6 +152,10 @@ class _HomePageState extends State<HomePage>
     final dailyDateText = '${now.month}月${now.day}日 ${now.hour}:00';
     // 头图（视频/封面）高度：含状态栏，约占屏高 42%
     final heroH = topInset + screenH * 0.42;
+    // 内容层的硬顶边（折线）：内容最多压到画面一半，再往上没有画布
+    final foldTop = heroH / 2;
+    // 下拉像素 → 画面展开进度的换算行程（展开量 1:1 跟随下拉距离）
+    _heroExpandRange = math.max(1.0, screenH - heroH);
 
     return GestureDetector(
       // 头图在内容之上（IgnorePointer），左右滑动切换宠物统一在这里处理
@@ -146,7 +184,7 @@ class _HomePageState extends State<HomePage>
               height: heroH,
               child: IgnorePointer(
                 child: AnimatedBuilder(
-                  animation: Listenable.merge([_scrollCtrl, _lockCtrl]),
+                  animation: _heroAnim,
                   child: _HeroVideo(
                     // 头图比可视区更大，给下拉放大留出余量
                     height: heroH * _kHeroOverscan,
@@ -154,7 +192,9 @@ class _HomePageState extends State<HomePage>
                     onColorExtracted: (c) => setState(() => _bgColor = c),
                   ),
                   builder: (context, child) => _HeroParallax(
-                    progress: _heroProgress,
+                    // 跟手下拉 + 锁定动画叠加：画面底边始终跟着内容顶边走，
+                    // 下拉过程中不会露出背景色，锁定后正好铺满整屏
+                    progress: math.min(1.0, _pullT.value + _lockCtrl.value),
                     height: heroH,
                     fullHeight: screenH,
                     child: child!,
@@ -162,64 +202,58 @@ class _HomePageState extends State<HomePage>
                 ),
               ),
             ),
-            // 滚动内容（上层）：首项是头图占位，内容面板紧随其后。
-            // 滚动时整块内容上移、压过固定的头图；下拉展开时整块内容被
-            // 挤下去同样的距离（见 _HeroPushDown），始终贴着画面底边。
-            Positioned.fill(
-              child: _HeroPushDown(
-                scroll: _scrollCtrl,
-                lock: _lockCtrl,
-                distance: screenH - heroH,
-                child: CustomScrollView(
-                  controller: _scrollCtrl,
-                  physics: const BouncingScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics(),
+            // 内容层（上层）：盒子本身钉在折线上（top = foldTop），
+            // 滚动只发生在盒子内部，任何内容都画不到画面上方。
+            // 盒子内首个 sliver 是透明留白（露出视频），把标题条垫到画面底边；
+            // 继续上滑留白耗尽后，标题条被 pinned 钉在盒子顶部，即压过画面一半处。
+            Positioned(
+              top: foldTop,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              // 盒子边界即硬裁剪线：超出部分（含回弹）一律不绘制
+              child: ClipRect(
+                child: AnimatedBuilder(
+                  animation: _lockCtrl,
+                  // 全屏锁定时整块内容被推下屏幕，画面才能铺满
+                  builder: (context, child) => Transform.translate(
+                    offset: Offset(0, (screenH - heroH) * _lockCtrl.value),
+                    child: child,
                   ),
-                  slivers: [
-                    // 头图在底层绘制，这里只撑出它的高度：
-                    // 面板顶边与画面底边严格对齐，不留叠压。
-                    // 首帧 MediaQuery 高度可能为 0，必须 clamp 掉负值
-                    SliverToBoxAdapter(
-                      child: SizedBox(
-                        height: heroH.clamp(0.0, double.infinity),
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: _onContentScroll,
+                    child: CustomScrollView(
+                      physics: const BouncingScrollPhysics(
+                        parent: AlwaysScrollableScrollPhysics(),
                       ),
-                    ),
-                    // 内容面板：圆角 + 底色，向上滚动时盖住固定头图形成层次
-                    SliverToBoxAdapter(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: _bgColor,
-                          borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(20),
+                      slivers: [
+                        // 透明留白 = 折线到画面底边的高度，正好是 foldTop
+                        SliverToBoxAdapter(child: SizedBox(height: foldTop)),
+                        // 标题条：留白耗尽后钉在盒子顶部（画面一半处）
+                        SliverPersistentHeader(
+                          pinned: true,
+                          delegate: _FoldHeaderDelegate(dateText: dailyDateText),
+                        ),
+                        // 标题条以下的全部内容：底色盖住背后的画面
+                        SliverToBoxAdapter(
+                          child: Container(
+                            color: _bgColor,
+                            // 底部 bottomInset + 76 避开胶囊 TabBar 与 AI 浮条
+                            padding: EdgeInsets.only(bottom: bottomInset + 76),
+                            child: const Column(
+                              children: [
+                                _AiDailySummary(),
+                                SizedBox(height: 12),
+                                _AgentDynamicCard(),
+                                SizedBox(height: 12),
+                                _TimelineCard(),
+                              ],
+                            ),
                           ),
                         ),
-                        // 内容通栏贴边（与头图一样贯穿左右）：
-                        // 顶部不留白，AI 日报标题条直接贴着上方视频；
-                        // 底部 bottomInset + 76 避开胶囊 TabBar 与 AI 浮条
-                        padding: EdgeInsets.fromLTRB(
-                          0,
-                          0,
-                          0,
-                          bottomInset + 76,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              height: _AiDailyHeader.height,
-                              child: _AiDailyHeader(dateText: dailyDateText),
-                            ),
-                            // 摘要卡整块直角，与标题条拼成一张
-                            const _AiDailySummary(),
-                            const SizedBox(height: 12),
-                            const _AgentDynamicCard(),
-                            const SizedBox(height: 12),
-                            const _TimelineCard(),
-                          ],
-                        ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -245,50 +279,40 @@ class _HomePageState extends State<HomePage>
             //       child: _HeroChatBubble(topInset: topInset),
             //     ),
             //   ),
-            // 顶部宠物切换条：首屏浮在头图上，向下滚动时淡出退场（交给内容）
+            // 画面区下拉进入全屏：内容区下拉由 _onContentScroll 累计触发，
+            // 画面本身不参与滚动，这里单独接一手。
+            // 高度只取到折线：折线以下已属于内容层，手势要留给滚动
             Positioned(
               top: 0,
               left: 0,
               right: 0,
-              child: AnimatedBuilder(
-                animation: _scrollCtrl,
-                builder: (context, child) {
-                  final offset = _scrollCtrl.hasClients
-                      ? _scrollCtrl.offset
-                      : 0.0;
-                  final t = (offset / 140).clamp(0.0, 1.0);
-                  return IgnorePointer(
-                    ignoring: t >= 1,
-                    child: Opacity(opacity: 1 - t, child: child),
-                  );
+              height: foldTop,
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onVerticalDragEnd: (details) {
+                  if ((details.primaryVelocity ?? 0) > 180) {
+                    _enterHeroFullscreen();
+                  }
                 },
-                child: _PetSwitchBar(topInset: topInset),
               ),
             ),
-            // 滚动后的毛玻璃吸顶条：接住淡出的顶部切换条，
-            // 让内容滚上来时顶部仍有导航，也避免文字直接压到状态栏
+            // 顶部宠物切换条：画面固定、内容最多压过一半，这条始终浮在画面上
             Positioned(
               top: 0,
               left: 0,
               right: 0,
-              child: AnimatedBuilder(
-                animation: _scrollCtrl,
-                child: _GlassTopBar(topInset: topInset),
-                builder: (context, child) {
-                  final offset = _scrollCtrl.hasClients
-                      ? _scrollCtrl.offset
-                      : 0.0;
-                  // 与切换条的淡出（offset/140）接力，错开一点避免叠影
-                  final t = ((offset - _kGlassBarShowAt) / _kGlassBarFadeSpan)
-                      .clamp(0.0, 1.0);
-                  if (t <= 0) return const SizedBox.shrink();
-                  return IgnorePointer(
-                    ignoring: t < 1,
-                    child: Opacity(opacity: t, child: child),
-                  );
-                },
-              ),
+              child: _PetSwitchBar(topInset: topInset),
             ),
+            // 毛玻璃吸顶条：内容最多压过画面一半，顶部始终有画面与切换条，
+            // 这条暂时不需要（实现保留在 _GlassTopBar，需要时放开注释）
+            /*
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: _GlassTopBar(topInset: topInset),
+            ),
+            */
             // 底部 AI 问答浮条：与健康页/宠物页一致，紧贴胶囊 TabBar 上方
             Positioned(
               left: 16,
@@ -330,56 +354,6 @@ const double _kHeroOverscan = 1.25;
 /// 让画面边缘始终落在屏幕外，避免四边出现缝隙或杂边。
 const double _kBleed = 8;
 
-/// 头图展开进度：0 = 正常头图高度，1 = 铺满整屏。
-/// 取「下拉距离」与「锁定动画」的较大值，锁定后即使 overscroll 回弹到 0
-/// 也保持 1（这就是"固定全屏"）。
-double _heroExpandProgress(double offset, double lockT) {
-  final pull = (-offset / _HeroParallax.expandDistance).clamp(0.0, 1.0);
-  return math.max(pull, lockT);
-}
-
-/// 内容整体跟随头图下推：头图展开多少，整块内容就被挤下去多少，
-/// 面板因此始终紧贴头图底边，而不会停留在原处被撑大的头图遮住。
-class _HeroPushDown extends StatelessWidget {
-  const _HeroPushDown({
-    required this.scroll,
-    required this.lock,
-    required this.distance,
-    required this.child,
-  });
-
-  final ScrollController scroll;
-
-  /// 锁定进度（0..1），解锁收起时用来平滑回位。
-  final Animation<double> lock;
-
-  /// 从正常头图高度铺满整屏还需要增加的高度。
-  final double distance;
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: Listenable.merge([scroll, lock]),
-      // child 复用，滚动/展开过程中不会重建整个滚动内容
-      child: child,
-      builder: (context, child) {
-        final offset = scroll.hasClients ? scroll.offset : 0.0;
-        final progress = _heroExpandProgress(offset, lock.value);
-        // 下拉时滚动视图自身已经把整块内容下移了 |offset|（overscroll 弹性），
-        // 这部分必须扣掉，只补足「让面板紧贴头图底边」所需的剩余位移；
-        // 否则两者叠加会让面板与头图之间被拉开一段随下拉变大的空隙。
-        // 面板顶边始终跟着画面底边走：下拉时扣掉 overscroll 已经带来的位移
-        final push = offset < 0
-            ? math.max(0.0, distance * progress + offset)
-            : distance * lock.value;
-        return Transform.translate(offset: Offset(0, push), child: child);
-      },
-    );
-  }
-}
-
 /// 头图层：画面钉在顶部不动（内容滚上来时从下方压过它）；
 /// 下拉时画面底边一路延伸到屏幕底部，力度够大（越过 [expandDistance]）
 /// 时由外层锁定全屏，松手也不回弹。
@@ -405,9 +379,6 @@ class _HeroParallax extends StatelessWidget {
 
   /// 实际内容层（高度应为 `height * _kHeroOverscan`）。
   final Widget child;
-
-  /// 下拉多少像素后画面铺满整屏（"使劲下拉"的力度，也是锁定阈值）。
-  static const double expandDistance = 170;
 
   @override
   Widget build(BuildContext context) {
@@ -847,6 +818,9 @@ class _PetSwitchBar extends StatelessWidget {
 
 /// 滚动后的毛玻璃吸顶条：模糊背后的内容，顶部始终保留宠物切换与消息入口，
 /// 同时把状态栏区域盖住，避免内容文字直接压到时间/电量上。
+///
+/// 内容最多压过画面一半、顶部始终有画面与切换条，这条暂时不挂到页面上。
+// ignore: unused_element
 class _GlassTopBar extends StatelessWidget {
   const _GlassTopBar({required this.topInset});
 
@@ -1343,7 +1317,35 @@ class _AiBar extends StatelessWidget {
   }
 }
 
-/// AI日报渐变标题条（随内容一起滚动，不再吸顶）。
+/// AI 日报标题条：作为 pinned 头钉在内容盒子顶部。
+/// 内容盒子的顶边本身就在折线（画面一半）上，所以标题条最多只能顶到这里，
+/// 不需要再用 shrinkOffset 自己算折叠量，也就不存在被内容压过去的情况。
+class _FoldHeaderDelegate extends SliverPersistentHeaderDelegate {
+  _FoldHeaderDelegate({required this.dateText});
+
+  final String dateText;
+
+  static const double _titleHeight = _AiDailyHeader.height;
+
+  @override
+  double get maxExtent => _titleHeight;
+
+  @override
+  double get minExtent => _titleHeight;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) => _AiDailyHeader(dateText: dateText);
+
+  @override
+  bool shouldRebuild(covariant _FoldHeaderDelegate oldDelegate) =>
+      oldDelegate.dateText != dateText;
+}
+
+/// AI日报渐变标题条（钉在折叠头底部，随内容上移到画面一半处）。
 class _AiDailyHeader extends StatelessWidget {
   const _AiDailyHeader({required this.dateText});
 
