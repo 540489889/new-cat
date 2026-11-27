@@ -43,6 +43,13 @@ class _MainShellState extends State<MainShell> {
   /// 胶囊高度：圆角取其一半，得到完全圆润的两端。
   static const double _barHeight = 54;
 
+  /// 选中块相对外框的内缩量（四周留出玻璃厚度）。
+  static const double _tabInset = 4;
+
+  /// 选中块圆角 = 外框圆角 − 内缩量，与外框同心，
+  /// 两端弧线跟 TabBar 内侧轮廓平行，不再是一块自己独立的椭圆。
+  static const double _tabRadius = _barHeight / 2 - _tabInset;
+
   @override
   Widget build(BuildContext context) {
     // 底部悬浮胶囊间距：iPhone 安全区（Home Indicator 约 34px）全部留出会显得
@@ -118,8 +125,8 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
-  /// 单个 Tab：图标在上、文字在下，选中只换颜色（不再加实心圆底），
-  /// 与 iOS App Store 的底部栏一致。
+  /// 单个 Tab：图标在上、文字在下；选中项除了换色，还垫一层淡淡的黑色透明
+  /// 圆角块（浅色玻璃上更沉一点，边界更清楚），未选中完全透明。
   Widget _buildTabItem(int index) {
     final active = index == _currentIndex;
     final color = active ? _selectedColor : _unselectedColor;
@@ -127,28 +134,47 @@ class _MainShellState extends State<MainShell> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => setState(() => _currentIndex = index),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Image.asset(
-              _tabs[index].icon,
-              width: 22,
-              height: 22,
-              // 单色图标按选中状态整体着色
-              color: color,
-              colorBlendMode: BlendMode.srcIn,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              _tabs[index].label,
-              style: TextStyle(
-                fontSize: 10,
-                height: 1.1,
-                fontWeight: active ? FontWeight.w600 : FontWeight.w500,
-                color: color,
+        child: Padding(
+          padding: const EdgeInsets.all(_tabInset),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
+            decoration: BoxDecoration(
+              // 淡黑渐变：上略深、下略浅，像玻璃上压出的一块凹槽
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withValues(alpha: active ? 0.09 : 0.0),
+                  Colors.black.withValues(alpha: active ? 0.06 : 0.0),
+                ],
               ),
+              borderRadius: BorderRadius.circular(_tabRadius),
             ),
-          ],
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Image.asset(
+                  _tabs[index].icon,
+                  width: 22,
+                  height: 22,
+                  // 单色图标按选中状态整体着色
+                  color: color,
+                  colorBlendMode: BlendMode.srcIn,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _tabs[index].label,
+                  style: TextStyle(
+                    fontSize: 10,
+                    height: 1.1,
+                    fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

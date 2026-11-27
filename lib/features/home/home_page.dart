@@ -185,9 +185,8 @@ class _HomePageState extends State<HomePage>
                               height: _AiDailyHeader.height,
                               child: _AiDailyHeader(dateText: dailyDateText),
                             ),
-                            // 摘要卡顶部为直角，直接与标题条拼成一张卡，不留间隙
+                            // 摘要卡整块直角，且与下方卡片不留间隙
                             const _AiDailySummary(),
-                            const SizedBox(height: 12),
                             const _AgentDynamicCard(),
                             const SizedBox(height: 12),
                             const _TimelineCard(),
@@ -257,11 +256,7 @@ class _HomePageState extends State<HomePage>
                     child: Opacity(opacity: 1 - t, child: child),
                   );
                 },
-                child: _PetSwitchBar(
-                  topInset: topInset,
-                  // 半透明白：头图透出，同时保证宠物名可读
-                  bgColor: Colors.white.withValues(alpha: 0.85),
-                ),
+                child: _PetSwitchBar(topInset: topInset),
               ),
             ),
             // 滚动后的毛玻璃吸顶条：接住淡出的顶部切换条，
@@ -811,12 +806,10 @@ class _HeroVideoState extends State<_HeroVideo> with WidgetsBindingObserver {
 /// 形成分隔，避免压住下方卡片文字。
 class _PetSwitchBar extends StatelessWidget {
   final double topInset;
-  final Color bgColor;
-  const _PetSwitchBar({required this.topInset, required this.bgColor});
+  const _PetSwitchBar({required this.topInset});
 
   @override
   Widget build(BuildContext context) {
-    final token = context.tTheme;
     return Container(
       width: double.infinity,
       padding: EdgeInsets.only(
@@ -825,17 +818,16 @@ class _PetSwitchBar extends StatelessWidget {
         right: 16,
         bottom: 10,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 宠物名（可点切换）与右侧消息铃铛，与吸顶条共用同一个组件
-          const PetHeaderRow(),
-          SizedBox(height: token.spacer / 2),
-          Text(
-            '铲屎官，早上好呀~',
-            style: TextStyle(color: Colors.black87, fontSize: 13),
-          ),
-        ],
+      // 宠物名（可点切换）与右侧消息铃铛，与吸顶条共用同一个组件；
+      // 这里压在视频上，用两颗玻璃胶囊和统一色系保证可读
+      child: const PetHeaderRow(
+        pill: true,
+        titleColor: Color(0xFF2E2A2C),
+        arrowColor: Color(0xFF2E2A2C),
+        titleFontSize: 14,
+        titleFontWeight: FontWeight.w600,
+        bellSize: 20,
+        bellColor: Color(0xFF2E2A2C),
       ),
     );
   }
@@ -848,36 +840,48 @@ class _GlassTopBar extends StatelessWidget {
 
   final double topInset;
 
-  /// 内容行高度（不含状态栏）。
-  static const double contentHeight = 48;
+  /// 内容行高度（不含状态栏）：等于未滚动时的 8 + 36 + 8，
+  /// 让毛玻璃条接管时文字与图标不发生纵向跳动。
+  static const double contentHeight = 52;
 
   @override
   Widget build(BuildContext context) {
     return ClipRect(
       child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        // 比底部 TabBar 更重一点的模糊：作为导航层，需要把内容先化开
+        filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
         child: Container(
           height: topInset + contentHeight,
-          padding: EdgeInsets.only(top: topInset, left: 16, right: 12),
+          padding: EdgeInsets.only(top: topInset, left: 16, right: 16),
           decoration: BoxDecoration(
-            // 比底部 TabBar 更实一点，突出"导航栏"的定位
-            color: Colors.white.withValues(alpha: 0.8),
+            // 与 TabBar 同一套玻璃，只是略实一点拉开层级
+            color: Colors.white.withValues(alpha: 0.62),
             border: Border(
+              // 底部用一道细白高光收边，替掉原来的硬黑分割线
               bottom: BorderSide(
-                color: Colors.black.withValues(alpha: 0.06),
-                width: 0.5,
+                color: Colors.white.withValues(alpha: 0.55),
+                width: 0.8,
               ),
             ),
           ),
-          // 与透明切换条共用同一个组件，只是铃铛略小一点
-          child: const PetHeaderRow(bellSize: 26),
+          // 与透明切换条完全同款内容：字色、字号、箭头、铃铛都不变，
+          // 滚动时胶囊底消融成这条毛玻璃，内容本身不跳
+          child: const PetHeaderRow(
+            titleColor: Color(0xFF2E2A2C),
+            arrowColor: Color(0xFF2E2A2C),
+            titleFontSize: 14,
+            titleFontWeight: FontWeight.w600,
+            bellSize: 20,
+            bellColor: Color(0xFF2E2A2C),
+          ),
         ),
       ),
     );
   }
 }
 
-/// 底部 AI 问答浮条：与健康页/宠物页一致（白底 + 阴影，紧贴胶囊 TabBar 上方），
+/// 底部 AI 问答浮条：与底部 TabBar 共用同一套玻璃材质（模糊 + 淡白 + 细白边），
+/// 避免全屏视频时白卡片与玻璃导航之间出现断层；
 /// 麦克风/发送图标复用项目资源图（voice-ico.png / send-ico.png）。
 class _AiBar extends StatelessWidget {
   const _AiBar();
@@ -885,53 +889,74 @@ class _AiBar extends StatelessWidget {
   static const Color _brand = Color(0xFF7F6370);
   static const Color _sub = Color(0xFF9A8F93);
 
+  /// 高度 48，圆角取一半，两端与 TabBar 同款胶囊。
+  static const double _height = 48;
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 48,
-      padding: const EdgeInsets.only(left: 14, right: 6),
+    final radius = BorderRadius.circular(_height / 2);
+    return DecoratedBox(
+      // 阴影放在裁剪层之外，避免被 ClipRRect 切掉
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: radius,
         boxShadow: const [
           BoxShadow(
-            color: Color(0x143D2E33),
-            blurRadius: 16,
-            offset: Offset(0, 4),
+            color: Color(0x0F3D2E33),
+            blurRadius: 18,
+            offset: Offset(0, 6),
           ),
         ],
       ),
-      child: Row(
-        children: [
-          const Icon(Icons.auto_awesome, size: 18, color: _brand),
-          const SizedBox(width: 8),
-          const Expanded(
-            child: Text(
-              '有什么问题都可以问我~',
-              style: TextStyle(fontSize: 13, color: _sub),
+      child: ClipRRect(
+        borderRadius: radius,
+        child: BackdropFilter(
+          // 与 TabBar 同样的模糊；底色略实一点，保证输入框里的字始终清楚
+          filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            height: _height,
+            padding: const EdgeInsets.only(left: 14, right: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.6),
+              borderRadius: radius,
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.55),
+                width: 0.8,
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.auto_awesome, size: 18, color: _brand),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    '有什么问题都可以问我~',
+                    style: TextStyle(fontSize: 13, color: _sub),
+                  ),
+                ),
+                Image.asset(
+                  'assets/images/icon/voice-ico.png',
+                  width: 20,
+                  height: 20,
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _brand,
+                  ),
+                  alignment: Alignment.center,
+                  child: Image.asset(
+                    'assets/images/icon/send-ico.png',
+                    width: 18,
+                    height: 18,
+                  ),
+                ),
+              ],
             ),
           ),
-          Image.asset(
-            'assets/images/icon/voice-ico.png',
-            width: 20,
-            height: 20,
-          ),
-          const SizedBox(width: 8),
-          Container(
-            width: 36,
-            height: 36,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: _brand,
-            ),
-            alignment: Alignment.center,
-            child: Image.asset(
-              'assets/images/icon/send-ico.png',
-              width: 18,
-              height: 18,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -997,10 +1022,9 @@ class _AiDailySummary extends StatelessWidget {
     const tags = ['饮食正常', '活动充足', '健康稳定'];
 
     return Container(
-      // 顶部直角：与吸顶标题条无缝拼接成一张卡片
+      // 整块直角：与标题条、下方卡片都无缝拼接成一张
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
