@@ -9,8 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:tdesign_flutter/tdesign_flutter.dart';
 
 import '../../core/pet/pet_state.dart';
-import '../../core/router/app_router.dart';
-import '../../shared/widgets/pet_picker.dart';
+import '../../shared/widgets/pet_header_row.dart';
 import 'ai_daily_detail_page.dart';
 
 /// 首页：顶部沉浸式宠物视频区（全宽、延伸到状态栏后面），
@@ -47,6 +46,10 @@ class _HomePageState extends State<HomePage>
 
   /// 锁定后向上滚过该距离：退出全屏，画面收回正常头图高度。
   static const double _kHeroUnlockScroll = 8;
+
+  /// 毛玻璃吸顶条：滚过该距离开始淡入，再滚 [_kGlassBarFadeSpan] 完全显现。
+  static const double _kGlassBarShowAt = 130;
+  static const double _kGlassBarFadeSpan = 80;
 
   /// 锁定 / 解锁的过渡时长。
   static const Duration _kHeroLockDuration = Duration(milliseconds: 240);
@@ -182,7 +185,7 @@ class _HomePageState extends State<HomePage>
                               height: _AiDailyHeader.height,
                               child: _AiDailyHeader(dateText: dailyDateText),
                             ),
-                            const SizedBox(height: 12),
+                            // 摘要卡顶部为直角，直接与标题条拼成一张卡，不留间隙
                             const _AiDailySummary(),
                             const SizedBox(height: 12),
                             const _AgentDynamicCard(),
@@ -259,6 +262,30 @@ class _HomePageState extends State<HomePage>
                   // 半透明白：头图透出，同时保证宠物名可读
                   bgColor: Colors.white.withValues(alpha: 0.85),
                 ),
+              ),
+            ),
+            // 滚动后的毛玻璃吸顶条：接住淡出的顶部切换条，
+            // 让内容滚上来时顶部仍有导航，也避免文字直接压到状态栏
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: AnimatedBuilder(
+                animation: _scrollCtrl,
+                child: _GlassTopBar(topInset: topInset),
+                builder: (context, child) {
+                  final offset = _scrollCtrl.hasClients
+                      ? _scrollCtrl.offset
+                      : 0.0;
+                  // 与切换条的淡出（offset/140）接力，错开一点避免叠影
+                  final t = ((offset - _kGlassBarShowAt) / _kGlassBarFadeSpan)
+                      .clamp(0.0, 1.0);
+                  if (t <= 0) return const SizedBox.shrink();
+                  return IgnorePointer(
+                    ignoring: t < 1,
+                    child: Opacity(opacity: t, child: child),
+                  );
+                },
               ),
             ),
             // 底部 AI 问答浮条：与健康页/宠物页一致，紧贴胶囊 TabBar 上方
@@ -790,10 +817,6 @@ class _PetSwitchBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final token = context.tTheme;
-    final pet = context.watch<PetState>();
-    final name = pet.selectedPet?.nickname.isNotEmpty == true
-        ? pet.selectedPet!.nickname
-        : '超级喵克，哎喵';
     return Container(
       width: double.infinity,
       padding: EdgeInsets.only(
@@ -805,59 +828,50 @@ class _PetSwitchBar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 宠物名（可点切换）与右侧消息铃铛同一行；只让这两块响应点击，
-          // 避免整行拦截下方内容的手势。用 Spacer 把铃铛顶到最右。
-          Row(
-            children: [
-              GestureDetector(
-                onTap: () => showPetPicker(context, pet),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ConstrainedBox(
-                      // 首帧/分屏时宽度可能小于 120，直接相减会得到负约束并触发
-                      // BoxConstraints 断言，这里兜底到最小 80
-                      constraints: BoxConstraints(
-                        maxWidth: (MediaQuery.sizeOf(context).width - 120)
-                            .clamp(80.0, double.infinity),
-                      ),
-                      child: Text(
-                        name,
-                        style: const TextStyle(
-                          color: Colors.black,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Image(
-                      image: AssetImage('assets/images/icon/swich-1.png'),
-                      width: 10,
-                      height: 10,
-                      color: Color(0xFF7F6370),
-                    ),
-                  ],
-                ),
-              ),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => Navigator.of(context).pushNamed(AppRoutes.news),
-                child: Image.asset(
-                  'assets/images/icon/lb-ico.png',
-                  width: 28,
-                  height: 28,
-                ),
-              ),
-            ],
-          ),
+          // 宠物名（可点切换）与右侧消息铃铛，与吸顶条共用同一个组件
+          const PetHeaderRow(),
           SizedBox(height: token.spacer / 2),
           Text(
             '铲屎官，早上好呀~',
             style: TextStyle(color: Colors.black87, fontSize: 13),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 滚动后的毛玻璃吸顶条：模糊背后的内容，顶部始终保留宠物切换与消息入口，
+/// 同时把状态栏区域盖住，避免内容文字直接压到时间/电量上。
+class _GlassTopBar extends StatelessWidget {
+  const _GlassTopBar({required this.topInset});
+
+  final double topInset;
+
+  /// 内容行高度（不含状态栏）。
+  static const double contentHeight = 48;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          height: topInset + contentHeight,
+          padding: EdgeInsets.only(top: topInset, left: 16, right: 12),
+          decoration: BoxDecoration(
+            // 比底部 TabBar 更实一点，突出"导航栏"的定位
+            color: Colors.white.withValues(alpha: 0.8),
+            border: Border(
+              bottom: BorderSide(
+                color: Colors.black.withValues(alpha: 0.06),
+                width: 0.5,
+              ),
+            ),
+          ),
+          // 与透明切换条共用同一个组件，只是铃铛略小一点
+          child: const PetHeaderRow(bellSize: 26),
+        ),
       ),
     );
   }

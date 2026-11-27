@@ -35,9 +35,10 @@ class _MainShellState extends State<MainShell> {
         (label: '我的', icon: 'assets/images/icon/tabbar4.png'),
       ];
 
-  // 选中 / 未选中颜色（品牌玫瑰 / 中性浅灰，靠颜色差突出当前页）
-  static const Color _selectedColor = Color(0xFF7F6370);
-  static const Color _unselectedColor = Color(0xFF8E8993);
+  // 选中 / 未选中颜色：选中用品牌玫瑰的高亮版（对应 App Store 的选中蓝），
+  // 未选中用深灰，保证在通透的玻璃上依然清晰
+  static const Color _selectedColor = Color(0xFFB2708A);
+  static const Color _unselectedColor = Color(0xFF3C3C43);
 
   /// 胶囊高度：圆角取其一半，得到完全圆润的两端。
   static const double _barHeight = 54;
@@ -70,28 +71,37 @@ class _MainShellState extends State<MainShell> {
             decoration: BoxDecoration(
               borderRadius: radius,
               boxShadow: const [
+                // 通透的玻璃配轻阴影，避免又变成一块实心白板
                 BoxShadow(
-                  color: Color(0x1F3D2E33),
-                  blurRadius: 20,
-                  offset: Offset(0, 6),
+                  color: Color(0x0F3D2E33),
+                  blurRadius: 26,
+                  offset: Offset(0, 10),
                 ),
               ],
             ),
             child: ClipRRect(
               borderRadius: radius,
               child: BackdropFilter(
-                // 毛玻璃：模糊背后的页面内容
-                filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+                // 强模糊 + 轻微提饱和：背后内容化成柔和的色块，而不是还能认出字
+                filter: ImageFilter.compose(
+                  outer: ImageFilter.blur(sigmaX: 34, sigmaY: 34),
+                  inner: const ColorFilter.matrix(<double>[
+                    1.15, 0, 0, 0, 0, //
+                    0, 1.15, 0, 0, 0, //
+                    0, 0, 1.15, 0, 0, //
+                    0, 0, 0, 1, 0, //
+                  ]),
+                ),
                 child: Container(
                   height: _barHeight,
                   decoration: BoxDecoration(
-                    // 半透明白 + 模糊 = iOS 玻璃质感
-                    color: Colors.white.withValues(alpha: 0.78),
+                    // 低不透明度白：玻璃要透，内容才能透出来
+                    color: Colors.white.withValues(alpha: 0.3),
                     borderRadius: radius,
-                    // 一道细亮边，强化玻璃的边界轮廓
+                    // 一道细亮边，勾出玻璃的边界
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.6),
-                      width: 0.8,
+                      color: Colors.white.withValues(alpha: 0.4),
+                      width: 0.6,
                     ),
                   ),
                   child: Row(
