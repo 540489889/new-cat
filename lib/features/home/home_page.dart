@@ -185,8 +185,9 @@ class _HomePageState extends State<HomePage>
                               height: _AiDailyHeader.height,
                               child: _AiDailyHeader(dateText: dailyDateText),
                             ),
-                            // 摘要卡整块直角，且与下方卡片不留间隙
+                            // 摘要卡整块直角，与标题条拼成一张
                             const _AiDailySummary(),
+                            const SizedBox(height: 12),
                             const _AgentDynamicCard(),
                             const SizedBox(height: 12),
                             const _TimelineCard(),
@@ -1212,8 +1213,7 @@ class _AgentDynamicCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        // 顶部直角：直接接在 AI 日报摘要卡下面，拼成同一块
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
